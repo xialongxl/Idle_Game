@@ -309,7 +309,6 @@ export class UIController {
         document.getElementById('det-name').innerHTML = `
             <span class="${GEAR_RARITY[gear.rarityIdx].color}">
                 ${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''} ${gear.pinned ? '📌' : (gear.locked ? '🔒' : '')}
-                ${gear.rarityIdx === 8 && gear.finaleRank ? `<span style="color:#ff0055"> [终焉+${gear.finaleRank}]</span>` : ''}
             </span>`;
 
         let isAccessory = (gear.slot === 'ring' || gear.slot === 'trinket');
@@ -391,22 +390,12 @@ export class UIController {
         let lockBtn = `<button onclick="window.ui.toggleLock()" style="border-color:#facc15;color:#facc15">${gear.locked ? '🔓 解锁' : '🔒 锁定'}</button>`;
         let pinBtn = `<button onclick="window.ui.togglePin()" style="border-color:#ff0055;color:#ff0055">${gear.pinned ? '📍 解除防换' : '📌 锁定防换'}</button>`;
 
-        // 🔒 终焉升阶按钮
-        let finaleBtn = '';
-        if (isEquipped && gear.rarityIdx === 8) {
-            let matCount = this.player.inventory.filter(g => g.rarityIdx === 8 && g.slot === gear.slot).length;
-            if (gear.finaleRank < 5 && matCount > 0) {
-                finaleBtn = `<button onclick="window.ui.upgradeFinale()" style="border-color:#ff0055;color:#ff0055">✨ 终焉升阶 (耗材:${matCount})</button>`;
-            }
-        }
-
         if (isEquipped) {
             actionsDiv.innerHTML = `
                 ${lockBtn} ${pinBtn}
                 <button onclick="window.ui.enhanceGear()" style="background:var(--accent);border-color:var(--accent)">
                     ⚒️ 花费 ${enhancePriceFmt}G 强化
                 </button>
-                ${finaleBtn}
                 <button onclick="window.ui.unequipGear()">👇 卸下放回背包</button>`;
         } else {
             actionsDiv.innerHTML = `
@@ -445,22 +434,6 @@ export class UIController {
         this.openGearDetail(this.modalContext.index, this.modalContext.isBody);
         EBus.emit('ui_equips_update');
         EBus.emit('log', `📌 [${gear.name}] 已${gear.pinned ? '锁定防换' : '解除防换'}`, 'sys');
-    }
-
-    // 🔒 终焉升阶操作
-    upgradeFinale() {
-        let targetGear = this.modalContext.targetGear;
-        let matGear = this.player.inventory.find(g => g.rarityIdx === 8 && g.slot === targetGear.slot);
-        if (!matGear) return alert('背包中没有同槽位的终焉装备作为材料！');
-        if (targetGear.finaleRank >= 5) return alert('已达最高升阶上限！');
-        
-        if(confirm(`确认消耗 [${matGear.name}] 对 [${targetGear.name}] 进行升阶？`)) {
-            if (this.player.upgradeFinaleGear(targetGear, matGear)) {
-                EBus.emit('log', `✨ 终焉升阶成功！[${targetGear.name}] 提升至 +${targetGear.finaleRank} 阶！`, 'sys');
-                EBus.emit('ui_equips_update');
-                this.openGearDetail(this.modalContext.index, this.modalContext.isBody);
-            }
-        }
     }
 
     // 镶嵌宝珠到指定孔位

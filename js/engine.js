@@ -467,19 +467,8 @@ export class Player {
             let isArmor = (slot === 'head' || slot === 'chest' || slot === 'legs');
             let isAccessory = (slot === 'ring' || slot === 'trinket');
 
-            // 🔒 终焉升阶加成：每阶主属性提升5%
-            let finaleMult = 1;
-            if (gear.rarityIdx === 8 && gear.finaleRank) {
-                finaleMult += gear.finaleRank * 0.05;
-            }
-
             for (let s in gear.stats) {
                 let val = gear.stats[s];
-                // 主属性应用升阶加成
-                if ((s === 'atk' || s === 'int') && gear.rarityIdx === 8 && gear.finaleRank) {
-                    val = Math.floor(val * finaleMult);
-                }
-
                 if (s === 'crit') {
                     if (slot === 'weapon') {
                         weaponCrit += val;
@@ -617,32 +606,6 @@ export class Player {
             }
         }
         this.save();
-    }
-
-    // 🔒 终焉装备升阶：消耗同槽位终焉装备，提升5%主属性，最高+5阶
-    upgradeFinaleGear(targetGear, materialGear) {
-        if (targetGear.rarityIdx !== 8 || materialGear.rarityIdx !== 8) return false;
-        if (targetGear.slot !== materialGear.slot) return false;
-        if (targetGear.finaleRank >= 5) return false;
-        if (!this.equips[targetGear.slot] || this.equips[targetGear.slot].id !== targetGear.id) return false;
-        
-        let matIdx = this.inventory.findIndex(g => g.id === materialGear.id);
-        if (matIdx === -1) return false;
-
-        targetGear.finaleRank = (targetGear.finaleRank || 0) + 1;
-        this.inventory.splice(matIdx, 1);
-        
-        // 🔒 更新基础评分及总分
-        let s = targetGear.stats;
-        let isA = (targetGear.slot === 'ring' || targetGear.slot === 'trinket');
-        if (targetGear.slot === 'weapon') targetGear.baseScore = Math.floor((s.atk||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
-        else if (isA) targetGear.baseScore = Math.floor((s.atk||0)*5 + (s.int||0)*5 + (s.haste||0)*1 + (s.crit||0)*1 + (s.versa||0)*1);
-        else targetGear.baseScore = Math.floor((s.int||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
-        this.recalcGearScore(targetGear);
-
-        this.recalcStats();
-        this.save();
-        return true;
     }
 }
 
