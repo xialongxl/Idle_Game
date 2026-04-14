@@ -196,7 +196,10 @@
             <div class="tab" data-tab="loadout_3">自定义</div>
         </div>
         <div class="seq-editor">
-            <div class="panel-title" style="margin: 10px 15px 0;">执行序列 <button id="btn-clear-seq">清空重排</button></div>
+            <!-- 🔒 导入/导出技能序列：在清空重排按钮旁新增导出和导入按钮 -->
+            <div class="panel-title" style="margin: 10px 15px 0;">执行序列 <div><button id="btn-clear-seq">清空重排</button><button id="btn-export-seq">📤 导出</button><button id="btn-import-seq">📥 导入</button></div></div>
+            <!-- 🔒 导入序列文件选择框：隐藏，由导入按钮触发 -->
+            <input type="file" id="file-import-seq" accept=".txt,.json" style="display:none;">
             <div class="curr-sequence">
                 <ul class="seq-list" id="sequence-list"></ul>
             </div>

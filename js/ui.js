@@ -218,6 +218,39 @@ export class UIController {
             EBus.emit('ui_bars_update');
             EBus.emit('log', '✨ 消耗 50G，状态已完全恢复！', 'sys');
         });
+
+        // 🔒 导出技能序列按钮：将当前序列导出为文本文件
+        document.getElementById('btn-export-seq').addEventListener('click', () => {
+            this.exportSequence();
+        });
+
+        // 🔒 导入技能序列按钮：触发隐藏的文件选择框
+        document.getElementById('btn-import-seq').addEventListener('click', () => {
+            document.getElementById('file-import-seq').click();
+        });
+
+        // 🔒 导入序列文件选择变更事件：读取文件内容并解析导入
+        document.getElementById('file-import-seq').addEventListener('change', (e) => {
+            let file = e.target.files[0];
+            if (!file) return;
+            let reader = new FileReader();
+            reader.onload = (event) => {
+                let text = event.target.result;
+                // 🔒 若文件为空，弹窗警告
+                if (!text || !text.trim()) {
+                    alert('导入文件内容为空，请检查文件！');
+                } else {
+                    this.importSequence(text);
+                }
+            };
+            reader.onerror = () => {
+                // 🔒 若读取失败，弹窗警告
+                alert('读取文件失败，请检查文件是否损坏！');
+            };
+            reader.readAsText(file);
+            // 🔒 重置输入框的值，允许重复选择同一文件
+            e.target.value = '';
+        });
     }
 
     // ==========================================
@@ -731,7 +764,7 @@ export class UIController {
             
             let isOpener = this.currentLoadout.openers.includes(id);
 
-            // 🌟 核心文案回归：不再是难懂的机制解释词！简简单单最强硬的最原始版本“起手”！
+            // 🌟 核心文案回归：不再是难懂的机制解释词！简简单单最强硬的最原始版本"起手"！
             ul.innerHTML += `
             <li class="seq-item" id="seq_dom_${id}">
                 <div>
@@ -802,5 +835,217 @@ export class UIController {
         EBus.emit('ui_bars_update');
         EBus.emit('ui_stats_update', this.player);
         EBus.emit('ui_equips_update');
+    }
+
+    // ==========================================
+    // 🔒 技能序列导入/导出功能
+    // 功能：支持将当前序列导出为文件、从文件导入序列
+    // 格式：@ 开头为起手技能，其他为常规序列，# 为注释
+    // ==========================================
+
+    // 🔒 导出当前技能序列为文本文件并触发下载
+    exportSequence() {
+        let ids = this.currentLoadout.ids || [];
+        let openers = this.currentLoadout.openers || [];
+        let lines = [];
+
+        // 🔒 起手技能：每行以 @ 开头，按 openers 数组顺序输出
+        openers.forEach(id => {
+            let sk = SKILLS_DB.find(s => s.id === id);
+            if (sk) {
+                lines.push('@ ' + sk.name);
+            }
+        });
+
+        // 🔒 常规序列：每行一个技能名，排除已在起手部分输出的技能
+        ids.forEach(id => {
+            if (openers.includes(id)) return; // 起手技能已在上部分输出，跳过
+            let sk = SKILLS_DB.find(s => s.id === id);
+            if (sk) {
+                lines.push(sk.name);
+            }
+        });
+
+        let text = lines.join('\n');
+
+        // 🔒 生成文件名：序列_[页签名]_[YYYYMMDD].txt
+        let tabNames = { loadout_1: '练级推图循环', loadout_2: 'Boss攻坚循环', loadout_3: '自定义' };
+        let tabName = tabNames[this.currentTab] || this.currentTab;
+        let now = new Date();
+        let dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+        let fileName = `序列_${tabName}_${dateStr}.txt`;
+
+        // 🔒 使用 Blob 生成下载链接，触发文件下载
+        let blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        window.engine.log(`📤 当前序列已导出为文件。（共 ${ids.length} 个技能，${openers.length} 个起手）`, 'sys');
+    }
+
+    // 🔒 解析导入文本，返回 { ids: [], openers: [] }
+    // 规则：空行忽略、# 注释忽略、@ 开头为起手技能（同时加入ids）、其他为常规序列
+    parseSequenceText(text) {
+        let ids = [];
+        let openers = [];
+        let lines = text.split('\n');
+
+        lines.forEach(line => {
+            // 🔒 忽略行首尾空白字符
+            let trimmed = line.trim();
+            // 🔒 空行忽略
+            if (!trimmed) return;
+            // 🔒 以 # 开头的行视为注释，忽略
+            if (trimmed.startsWith('#')) return;
+
+            // 🔒 判断是否为起手技能
+            let isOpener = false;
+            let skillName = '';
+
+            if (trimmed.startsWith('@')) {
+                isOpener = true;
+                // 🔒 去掉@，再trim一次，兼容"@ 技能名"和"@技能名"
+                skillName = trimmed.substring(1).trim();
+            } else {
+                skillName = trimmed;
+            }
+
+            if (!skillName) return;
+
+            // 🔒 在SKILLS_DB中查找匹配的技能（忽略大小写，排除被动技能）
+            let matched = SKILLS_DB.filter(s =>
+                s.name.toLowerCase() === skillName.toLowerCase() && s.type !== 'passive'
+            );
+
+            if (matched.length === 0) {
+                // 🔒 无法匹配任何技能，日志提示并跳过
+                window.engine.log(`⚠️ 无法识别技能名称：[${skillName}]，已跳过。`, 'err');
+                return;
+            }
+
+            if (matched.length > 1) {
+                // 🔒 同名技能警告，选取第一个
+                window.engine.log(`⚠️ 发现多个同名技能 [${skillName}]，选取第一个。`, 'sys');
+            }
+
+            let skillId = matched[0].id;
+
+            if (isOpener) {
+                // 🔒 起手技能同时加入 openers 和 ids（openers 是 ids 的子集）
+                openers.push(skillId);
+                ids.push(skillId);
+            } else {
+                ids.push(skillId);
+            }
+        });
+
+        return { ids, openers };
+    }
+
+    // 🔒 执行导入技能序列：解析 → 等级校验 → 去重 → 数量限制 → 保底 → 覆盖保存
+    importSequence(text) {
+        // 🔒 解析文本
+        let parsed = this.parseSequenceText(text);
+        let ids = parsed.ids;
+        let openers = parsed.openers;
+
+        // 🔒 检查是否有有效技能
+        if (ids.length === 0 && openers.length === 0) {
+            alert('未识别到任何有效技能名称，请检查文件格式。');
+            return;
+        }
+
+        let playerLevel = this.player.level;
+        let isGMUnlocked = Storage.get('gm_unlock_all', false);
+
+        // 🔒 GM模式提示
+        if (isGMUnlocked) {
+            window.engine.log(`[GM] 已强制导入所有技能，无视等级限制。`, 'sys');
+        }
+
+        // 🔒 等级校验：移除未解锁的起手技能
+        let filteredOpeners = [];
+        openers.forEach(id => {
+            let sk = SKILLS_DB.find(s => s.id === id);
+            if (!sk) return;
+            if (!isGMUnlocked && sk.reqLv > playerLevel) {
+                window.engine.log(`⚠️ 起手技能 [${sk.name}] 未解锁，已自动移除。`, 'sys');
+                // 🔒 起手技能未解锁时，也需要从ids中移除
+                let idxInIds = ids.indexOf(id);
+                if (idxInIds > -1) ids.splice(idxInIds, 1);
+                return;
+            }
+            filteredOpeners.push(id);
+        });
+
+        // 🔒 等级校验：移除未解锁的常规技能
+        let filteredIds = [];
+        ids.forEach(id => {
+            let sk = SKILLS_DB.find(s => s.id === id);
+            if (!sk) return;
+            // 🔒 跳过已因起手校验被移除的技能
+            if (!isGMUnlocked && sk.reqLv > playerLevel) {
+                window.engine.log(`⚠️ 序列中的 [${sk.name}] 未解锁，已自动跳过。`, 'sys');
+                // 🔒 若该技能在openers中也存在，一并移除
+                let idxInOpeners = filteredOpeners.indexOf(id);
+                if (idxInOpeners > -1) filteredOpeners.splice(idxInOpeners, 1);
+                return;
+            }
+            filteredIds.push(id);
+        });
+
+        // 🔒 去重：openers数组
+        let dedupedOpeners = [];
+        filteredOpeners.forEach(id => {
+            if (!dedupedOpeners.includes(id)) {
+                dedupedOpeners.push(id);
+            } else {
+                let sk = SKILLS_DB.find(s => s.id === id);
+                window.engine.log(`⚠️ 起手技能 [${sk ? sk.name : id}] 重复，已自动去重。`, 'sys');
+            }
+        });
+
+        // 🔒 去重：ids数组
+        let dedupedIds = [];
+        filteredIds.forEach(id => {
+            if (!dedupedIds.includes(id)) {
+                dedupedIds.push(id);
+            } else {
+                let sk = SKILLS_DB.find(s => s.id === id);
+                window.engine.log(`⚠️ 序列中的 [${sk ? sk.name : id}] 重复，已自动去重。`, 'sys');
+            }
+        });
+
+        // 🔒 数量限制：ids最多15个
+        if (dedupedIds.length > 15) {
+            window.engine.log(`⚠️ 常规序列超过15个技能，已自动截取前15个。`, 'sys');
+            dedupedIds = dedupedIds.slice(0, 15);
+        }
+
+        // 🔒 保底处理：若过滤后ids为空
+        if (dedupedIds.length === 0) {
+            dedupedIds = ['s01'];
+            window.engine.log(`⚠️ 所有导入技能均无效或未解锁，已自动替换为魔力弹。`, 'sys');
+        }
+
+        // 🔒 过滤openers：确保openers中的技能都在ids中（系统约束）
+        dedupedOpeners = dedupedOpeners.filter(id => dedupedIds.includes(id));
+
+        // 🔒 覆盖当前序列
+        this.currentLoadout.ids = dedupedIds;
+        this.currentLoadout.openers = dedupedOpeners;
+
+        // 🔒 保存并刷新UI
+        this.saveSequence();
+        this.renderSequence();
+
+        // 🔒 输出汇总日志
+        window.engine.log(`📥 导入完成。常规技能: ${dedupedIds.length}，起手: ${dedupedOpeners.length}。`, 'sys');
     }
 }
