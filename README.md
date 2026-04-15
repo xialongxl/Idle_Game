@@ -85,6 +85,9 @@
 
 欢迎提交 Issue 报告 Bug 或提出新功能建议！如果你有更优的数值平衡方案或炫酷的技能构想，也欢迎发起 Pull Request。
 
+- **提交问题**：请在 [Issues](https://github.com/xialongxl/Idle_Game/issues) 页面描述你遇到的问题。
+- **提交代码**：欢迎 Fork 本项目并提交 Pull Request。
+
 ---
 
 ## 📄 许可证
