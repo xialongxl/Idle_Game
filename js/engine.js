@@ -81,6 +81,25 @@ export class GearGenerator {
         return { score: orb.val * scoreMult };
     }
 
+    // 🔒 终焉精炼：获取指定精炼次数的提升值（递减曲线）
+    static getRefineIncrement(currentRefineLv) {
+        if (currentRefineLv < 3) return 3.0;   // 第1-3次：+3%
+        if (currentRefineLv < 6) return 2.0;   // 第4-6次：+2%
+        if (currentRefineLv < 9) return 1.5;   // 第7-9次：+1.5%
+        if (currentRefineLv < 12) return 1.0;  // 第10-12次：+1%
+        if (currentRefineLv < 15) return 0.5;  // 第13-15次：+0.5%
+        return 0; // 已达上限
+    }
+
+    // 🔒 终焉精炼：获取副属性理论上限（按部位与词条类型区分）
+    static getAffixCap(slot, affix) {
+        if (slot === 'weapon') return 40;             // 武器全限定40%
+        if (slot === 'ring' || slot === 'trinket') {  // 首饰区分词条
+            return affix === 'crit' ? 30 : 36;
+        }
+        return 24; // 防具全限定24%
+    }
+
     // 🌟 修复：支持指定槽位生成，给 GM 终焉套装提供底层支撑，防止强行覆盖导致属性错乱
     static generate(floor, fixedRarity = -1, fixedSlot = null) {
         let rVal = Math.random() * 100;
@@ -133,7 +152,9 @@ export class GearGenerator {
             // 🔒 装备锁定功能：默认未锁定，终焉装备自动锁定(防误卖)
             locked: rIdx === 8,
             // 🔒 防替换锁：默认不锁，需玩家手动上锁才能防止被更高评分新装备自动替换
-            pinned: false
+            pinned: false,
+            // 🔒 终焉精炼次数记录：按副属性键名存储已精炼次数
+            refineLevels: {}
         };
 
         // 严谨的属性槽位分配：武器极致攻击，防具极致防御
@@ -186,6 +207,8 @@ export class GearGenerator {
             }
 
             gear.stats[selectedAffix] = (gear.stats[selectedAffix] || 0) + addVal;
+            // 🔒 初始化该副词条的精炼次数为0
+            gear.refineLevels[selectedAffix] = 0;
 
             // 单件装备上限保护机制 (防止单件装备无敌)
             if (selectedAffix === 'crit') {
@@ -303,6 +326,8 @@ export class Player {
         this.orbs = d.orbs || {}; // 宝珠背包：按ID统计数量 { orb_hp: 2, orb_atk: 1 }
         // 🔒 图鉴系统：记录玩家是否获得过各槽位的终焉装备
         this.finaleCollection = d.finaleCollection || { weapon: false, head: false, chest: false, legs: false, ring: false, trinket: false };
+        // 🔒 终焉精华系统：分解终焉装备产出，用于精炼
+        this.finaleEssence = d.finaleEssence || 0;
         
         // 修正：战斗中存读档时必须先初始化空的BUFF和宝珠加成，否则重算属性会报错
         this.buffs = []; 
@@ -313,12 +338,14 @@ export class Player {
             if (g.locked === undefined) g.locked = false; 
             if (g.pinned === undefined) g.pinned = false; 
             if (g.baseScore === undefined) g.baseScore = g.score || 0; 
+            if (g.refineLevels === undefined) g.refineLevels = {}; // 🔒 兼容旧装备缺失精炼字段
         });
         for (let k in this.equips) { 
             if (this.equips[k]) {
                 if (this.equips[k].locked === undefined) this.equips[k].locked = false; 
                 if (this.equips[k].pinned === undefined) this.equips[k].pinned = false; 
                 if (this.equips[k].baseScore === undefined) this.equips[k].baseScore = this.equips[k].score || 0; 
+                if (this.equips[k].refineLevels === undefined) this.equips[k].refineLevels = {}; // 🔒 兼容旧装备缺失精炼字段
             }
         }
         
@@ -339,6 +366,7 @@ export class Player {
             maxFloor: this.maxFloor,
             orbs: this.orbs,
             finaleCollection: this.finaleCollection,
+            finaleEssence: this.finaleEssence, // 🔒 终焉精华参与存档
             hp: this.hp,
             mp: this.mp
         });
@@ -543,7 +571,53 @@ export class Player {
         this.save();
     }
 
-    lootItem(gear, threshold) {
+    // 🔒 通用分解方法：获得金币，终焉装备额外获得精华
+    salvageGear(gear) {
+        let salvageVal = (gear.rarityIdx + 1) * this.level * 8;
+        this.gold += salvageVal;
+        // 🔒 分解终焉装备时，精华直接累加
+        if (gear.rarityIdx === 8) {
+            this.finaleEssence += 1;
+        }
+        this.save();
+        return salvageVal;
+    }
+
+    // 🔒 终焉精炼：消耗精华提升指定副属性，递减曲线，有次数上限
+    refineAffix(gear, affixKey) {
+        if (!gear.refineLevels) gear.refineLevels = {};
+        if (gear.refineLevels[affixKey] === undefined) gear.refineLevels[affixKey] = 0;
+        let currentLv = gear.refineLevels[affixKey];
+        // 🔒 每个词条最多精炼15次
+        if (currentLv >= 15) return null;
+        // 🔒 精炼消耗：单次固定3个精华
+        if (this.finaleEssence < 3) return null;
+
+        let increment = GearGenerator.getRefineIncrement(currentLv);
+        let cap = GearGenerator.getAffixCap(gear.slot, affixKey);
+        let currentVal = gear.stats[affixKey] || 0;
+        // 🔒 若当前数值+提升值超过上限，则只加到上限
+        let actualInc = Math.min(increment, Math.max(0, cap - currentVal));
+        if (actualInc <= 0) return null;
+
+        this.finaleEssence -= 3;
+        gear.stats[affixKey] = currentVal + actualInc;
+        gear.refineLevels[affixKey] = currentLv + 1;
+        
+        // 🔒 精炼后重算基础评分及总分 (与强化逻辑一致)
+        let s = gear.stats;
+        let isA = (gear.slot === 'ring' || gear.slot === 'trinket');
+        if (gear.slot === 'weapon') gear.baseScore = Math.floor((s.atk||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
+        else if (isA) gear.baseScore = Math.floor((s.atk||0)*5 + (s.int||0)*5 + (s.haste||0)*1 + (s.crit||0)*1 + (s.versa||0)*1);
+        else gear.baseScore = Math.floor((s.int||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
+        
+        this.recalcGearScore(gear);
+        this.recalcStats();
+        this.save();
+        return { increment: actualInc, newLevel: currentLv + 1 };
+    }
+
+    lootItem(gear) {
         // 🔒 终焉/极品自动装备逻辑：只要比当前穿的评分高且没上防替换锁，直接自动换上
         let currentEquip = this.equips[gear.slot];
         // 🔒 核心修复：使用 || 0 防止旧版 undefined 评分导致判断失效
@@ -563,15 +637,9 @@ export class Player {
             
             let logMsg = `✨ 自动装备：穿戴 <span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span>`;
             if (oldGear) {
-                if (this.inventory.length < 30) {
-                    // 🔒 替换下的旧装备进背包，保留其原有的 locked 防误卖状态
-                    this.inventory.push(oldGear);
-                    logMsg = `🔄 自动替换：穿戴 <span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span>，旧装备进背包`;
-                } else {
-                    let oldSalvageVal = (oldGear.rarityIdx + 1) * this.level * 8;
-                    this.gold += oldSalvageVal;
-                    logMsg = `🔄 自动替换：穿戴 <span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span>，旧装备熔炼获得 ${formatNumber(oldSalvageVal)} G`;
-                }
+                // 🔒 移除背包容量限制：替换下的旧装备直接进背包
+                this.inventory.push(oldGear);
+                logMsg = `🔄 自动替换：穿戴 <span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span>，旧装备进背包`;
             }
             EBus.emit('log', logMsg, 'sys');
             EBus.emit('sys_message', logMsg.replace(/<[^>]+>/g, '')); // 纯文本给右上角弹窗
@@ -581,29 +649,28 @@ export class Player {
             return; // 装备已处理，结束
         }
 
-        // 🔒 正常进背包或熔炼逻辑
-        let salvageVal = (gear.rarityIdx + 1) * this.level * 8;
-        if (this.inventory.length >= 30) {
-            this.gold += salvageVal;
-            EBus.emit('log', `⚠️ 背包满载！被迫熔炼了 <span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span>，得 ${formatNumber(salvageVal)} G`, 'err');
-            this.save();
+        // 🔒 自动分解阈值：从持久化存储读取（-1表示不自动分解）
+        let autoThreshold = Storage.get('auto_salvage_threshold', -1);
+
+        // 🔒 阈值判定：品质低于阈值的装备直接分解，不进背包
+        if (autoThreshold > -1 && gear.rarityIdx <= autoThreshold) {
+            let salvageVal = this.salvageGear(gear);
+            let essenceLog = gear.rarityIdx === 8 ? '，获得 1 终焉精华' : '';
+            EBus.emit('log', `♻️ 自动熔炼了 <span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span>，获得 ${formatNumber(salvageVal)} G${essenceLog}`, 'sys');
+            EBus.emit('ui_bars_update');
             return;
         }
 
-        if (threshold > -1 && gear.rarityIdx <= threshold) {
-            this.gold += salvageVal;
-            EBus.emit('log', `♻️ 自动熔炼了 <span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span>，获得 ${formatNumber(salvageVal)} G`, 'sys');
-        } else {
-            this.inventory.push(gear);
-            EBus.emit('log', `📦 战利品掉落：<span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span> (进包)`, 'loot');
-            // 🔒 记录图鉴与自动锁定
-            if (gear.rarityIdx === 8) {
-                if (!this.finaleCollection[gear.slot]) {
-                    this.finaleCollection[gear.slot] = true;
-                    EBus.emit('sys_message', `📖 终焉图鉴更新：收集到 [${SLOT_NAMES[gear.slot]}]`);
-                }
-                gear.locked = true;
+        // 🔒 移除背包容量限制：掉落装备直接进背包
+        this.inventory.push(gear);
+        EBus.emit('log', `📦 战利品掉落：<span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span>`, 'loot');
+        // 🔒 记录图鉴与自动锁定
+        if (gear.rarityIdx === 8) {
+            if (!this.finaleCollection[gear.slot]) {
+                this.finaleCollection[gear.slot] = true;
+                EBus.emit('sys_message', `📖 终焉图鉴更新：收集到 [${SLOT_NAMES[gear.slot]}]`);
             }
+            gear.locked = true;
         }
         this.save();
     }
@@ -1113,8 +1180,8 @@ export class CombatEngine {
                 this.floor,
                 this.mob.isBoss ? Math.max(4, Math.floor(Math.random() * 9)) : -1
             );
-            let threshold = parseInt(document.getElementById('ui-salvage').value);
-            this.player.lootItem(gear, threshold);
+            // 🔒 移除背包容量限制：掉落装备直接调用无容量判断的 lootItem
+            this.player.lootItem(gear);
         }
 
         // 🔮 宝珠掉落判断：小怪15%概率，Boss必掉且多掉

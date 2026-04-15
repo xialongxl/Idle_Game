@@ -3,7 +3,7 @@
 // 负责全面响应引擎的数据驱动 及事件下发
 // ==========================================
 import { SKILLS_DB, GEAR_RARITY, SLOTS, SLOT_NAMES, ORBS, MAX_SAME_ORB } from './data.js';
-import { EBus, Storage, formatNumber } from './engine.js';
+import { EBus, Storage, formatNumber, GearGenerator } from './engine.js';
 
 export class UIController {
     constructor(player) {
@@ -16,6 +16,8 @@ export class UIController {
         // Modal 面板弹窗的上下文临时缓存记录器
         this.modalContext = { targetGear: null, isBody: false, index: -1 };
         this.currentFilterSlot = null; // 背包部位筛选状态
+        this.currentRefineGear = null; // 🔒 终焉精炼：当前选中的精炼装备
+        this.currentRefineList = [];   // 🔒 终焉精炼：当前可精炼的装备列表缓存
     }
 
     // 🌟 全局事件统合：所有的界面状态流转都在这里监听渲染
@@ -27,30 +29,34 @@ export class UIController {
         EBus.on('ui_bars_update', () => {
             document.getElementById('ui-level').innerText = `Lv.${this.player.level}`;
             
-            let hpFillPct = (Math.max(0, this.player.hp) / this.player.getMaxHp()) * 100;
-            document.getElementById('ui-hp-fill').style.width = `${hpFillPct}%`;
+            let hpFillPCT = (Math.max(0, this.player.hp) / this.player.getMaxHp()) * 100;
+            document.getElementById('ui-hp-fill').style.width = `${hpFillPCT}%`;
             
             // 采用格式化输出保证千万级血量不断层
             let currentHpFmt = formatNumber(Math.floor(Math.max(0, this.player.hp)));
             let maxHpFmt = formatNumber(this.player.getMaxHp());
             document.getElementById('ui-hp-txt').innerText = `${currentHpFmt}/${maxHpFmt}`;
             
-            let mpFillPct = (this.player.mp / this.player.getMaxMp()) * 100;
-            document.getElementById('ui-mp-fill').style.width = `${mpFillPct}%`;
+            let mpFillPCT = (this.player.mp / this.player.getMaxMp()) * 100;
+            document.getElementById('ui-mp-fill').style.width = `${mpFillPCT}%`;
             
             let currentMpFmt = formatNumber(Math.floor(this.player.mp));
             let maxMpFmt = formatNumber(this.player.getMaxMp());
             document.getElementById('ui-mp-txt').innerText = `${currentMpFmt}/${maxMpFmt}`;
             
             let maxExp = this.player.getExpReq();
-            let expFillPct = (this.player.exp / maxExp) * 100;
-            document.getElementById('ui-exp-fill').style.width = `${expFillPct}%`;
-            document.getElementById('ui-exp-txt').innerText = `${expFillPct.toFixed(1)}%`;
+            let expFillPCT = (this.player.exp / maxExp) * 100;
+            document.getElementById('ui-exp-fill').style.width = `${expFillPCT}%`;
+            document.getElementById('ui-exp-txt').innerText = `${expFillPCT.toFixed(1)}%`;
             
             document.getElementById('ui-gold').innerText = formatNumber(Math.floor(this.player.gold));
             
-            // 🔒 背包满红点逻辑
+            // 🔒 移除背包容量限制：不再需要背包满红点逻辑
             this.updateInvStatus();
+
+            // 🔒 修复：更新终焉精华数值显示
+            let essenceEl = document.getElementById('ui-essence');
+            if (essenceEl) essenceEl.innerText = this.player.finaleEssence || 0;
         });
 
         EBus.on('ui_stats_update', (p) => {
@@ -89,6 +95,13 @@ export class UIController {
                     </div>`;
                 }
             });
+
+            // 🔒 终焉精炼按钮：获得第一件终焉装备后解锁显示
+            let hasFinale = Object.values(this.player.finaleCollection).some(v => v);
+            let refineBtn = document.getElementById('btn-refine');
+            if (refineBtn) {
+                refineBtn.style.display = hasFinale ? 'inline-block' : 'none';
+            }
         });
 
         EBus.on('ui_monster_update', (m) => {
@@ -170,8 +183,9 @@ export class UIController {
             });
         });
 
-        document.getElementById('ui-salvage').value = Storage.get('salvage_idx', -1);
-        document.getElementById('ui-salvage').addEventListener('change', e => Storage.set('salvage_idx', e.target.value));
+        // 🔒 扩展自动分解阈值选项：保留下拉框，补全九档品质，改用新的存储键名
+        document.getElementById('ui-salvage').value = Storage.get('auto_salvage_threshold', -1);
+        document.getElementById('ui-salvage').addEventListener('change', e => Storage.set('auto_salvage_threshold', e.target.value));
 
         document.getElementById('ui-retreat-pct').value = Storage.get('retreat_pct', 30);
         document.getElementById('ui-retreat-pct').addEventListener('change', e => Storage.set('retreat_pct', e.target.value));
@@ -236,7 +250,6 @@ export class UIController {
             let reader = new FileReader();
             reader.onload = (event) => {
                 let text = event.target.result;
-                // 🔒 若文件为空，弹窗警告
                 if (!text || !text.trim()) {
                     alert('导入文件内容为空，请检查文件！');
                 } else {
@@ -244,12 +257,15 @@ export class UIController {
                 }
             };
             reader.onerror = () => {
-                // 🔒 若读取失败，弹窗警告
                 alert('读取文件失败，请检查文件是否损坏！');
             };
             reader.readAsText(file);
-            // 🔒 重置输入框的值，允许重复选择同一文件
             e.target.value = '';
+        });
+
+        // 🔒 终焉精炼按钮：打开独立模态窗口
+        document.getElementById('btn-refine').addEventListener('click', () => {
+            this.openRefineModal();
         });
     }
 
@@ -257,16 +273,9 @@ export class UIController {
     // 万能背包系统与强化锻造界面业务
     // ==========================================
     
-    // 🔒 小红点独立圆点提示
+    // 🔒 移除背包容量限制：不再需要红点提示和满包检查
     updateInvStatus() {
-        let dot = document.getElementById('inv-reddot');
-        let count = this.player.inventory.length;
-        // 控制红点显隐
-        if (count >= 30) {
-            dot.style.display = 'block';
-        } else {
-            dot.style.display = 'none';
-        }
+        // 清空原有容量提示逻辑
     }
 
     // 点击专门的背包按钮：清空筛选，显示全部
@@ -296,9 +305,10 @@ export class UIController {
 
         let filterSlot = this.currentFilterSlot;
         if (filterSlot) {
-            document.getElementById('modal-title').innerText = `🎒 装备选取 - ${SLOT_NAMES[filterSlot]} (${this.player.inventory.length}/30)`;
+            document.getElementById('modal-title').innerText = `🎒 装备选取 - ${SLOT_NAMES[filterSlot]}`;
         } else {
-            document.getElementById('modal-title').innerText = `🎒 星盘背包 (${this.player.inventory.length}/30)`;
+            // 🔒 虽然移除了容量上限，但仍需显示背包内物品的数量
+            document.getElementById('modal-title').innerText = `🎒 星盘背包 (${this.player.inventory.length})`;
         }
 
         let hasItem = false;
@@ -365,7 +375,6 @@ export class UIController {
             statsHtml += ` | 防御力: ${formatNumber(Math.floor(gear.stats.int || 0))}<br>`;
         } else {
             statsHtml += `防御力: ${formatNumber(Math.floor(gear.stats.int || 0))}<br>`;
-            // 🔒 防具镶了攻击宝珠，单列一行，带上括号
             if (orbBonus.atk_pct) statsHtml += `攻击力: <span style="color:#a855f7">+${orbBonus.atk_pct}%</span><br>`;
         }
 
@@ -374,11 +383,11 @@ export class UIController {
         if (gear.stats.haste) statsHtml += `冷却缩减: +${(gear.stats.haste).toFixed(1)}%${orbBonus.haste ? ` <span style="color:#a855f7">(+${orbBonus.haste}%)</span>` : ''}　`;
         if (gear.stats.versa) statsHtml += `共鸣: +${(gear.stats.versa).toFixed(1)}%${orbBonus.versa ? ` <span style="color:#a855f7">(+${orbBonus.versa}%)</span>` : ''}　`;
         
-        // 🔒 宝珠提供的额外属性独立显示 (生命、终焉冷却等)
+        // 🔒 宝珠提供的额外属性独立显示
         if (orbBonus.hp_pct) statsHtml += `　最大生命: <span style="color:#a855f7">+${orbBonus.hp_pct}%</span>`;
         if (orbBonus.finale_cd) statsHtml += `　终焉冷却: <span style="color:#a855f7">+${orbBonus.finale_cd}%</span>`;
 
-        // 🔮 宝珠镶嵌 UI 区块：支持3孔位，只显示拥有的，拆卸无损退回
+        // 🔮 宝珠镶嵌 UI 区块
         statsHtml += `<div style="margin-top:10px; border-top:1px dashed #444; padding-top:8px;">`;
         statsHtml += `<b style="color:#a855f7">🔮 宝珠孔位 (同类全身最多生效${MAX_SAME_ORB}个)：</b><br>`;
         
@@ -393,7 +402,6 @@ export class UIController {
                 statsHtml += `<button onclick="window.ui.removeOrb(${i})" style="font-size:11px; padding:1px 4px; background:transparent; border:1px solid #ef4444; color:#ef4444; cursor:pointer;">卸下</button>`;
             } else {
                 statsHtml += `<span style="color:#666; margin-right:5px;">[空]</span>`;
-                // 遍历玩家拥有的宝珠生成镶嵌按钮
                 let hasOrb = false;
                 ORBS.forEach(o => {
                     let count = this.player.orbs[o.id] || 0;
@@ -413,11 +421,9 @@ export class UIController {
         document.getElementById('det-stats').innerHTML = statsHtml;
 
         let actionsDiv = document.getElementById('det-actions');
-        let sellPrice = Math.max(0, (gear.rarityIdx + 1) * 20) * (gear.enhanceLv + 1);
         let enhancePrice = Math.max(100, (gear.rarityIdx + 1) * 300 * (gear.enhanceLv + 1));
 
         let enhancePriceFmt = formatNumber(enhancePrice);
-        let sellPriceFmt = formatNumber(sellPrice);
 
         // 🔒 恢复双锁按钮：普通锁(防误卖) 和 防换锁(防替换)
         let lockBtn = `<button onclick="window.ui.toggleLock()" style="border-color:#facc15;color:#facc15">${gear.locked ? '🔓 解锁' : '🔒 锁定'}</button>`;
@@ -437,7 +443,7 @@ export class UIController {
                     ✨ 穿戴 / 替换现装
                 </button>
                 <button onclick="window.ui.sellFromPack()" style="border-color:#facc15;color:#facc15">
-                    💰 出售获得 ${sellPriceFmt}G
+                    💰 分解获得金币${gear.rarityIdx === 8 ? '与精华' : ''}
                 </button>`;
         }
     }
@@ -447,6 +453,8 @@ export class UIController {
         let gear = this.modalContext.targetGear;
         gear.locked = !gear.locked;
         this.player.save();
+        // 🔒 修复：解锁后及时刷新左侧列表，消除名字旁的旧锁图标
+        this._renderBackpack();
         this.openGearDetail(this.modalContext.index, this.modalContext.isBody);
         EBus.emit('log', `🔒 [${gear.name}] 已${gear.locked ? '锁定' : '解锁'}`, 'sys');
     }
@@ -464,6 +472,8 @@ export class UIController {
         }
 
         this.player.save();
+        // 🔒 修复：切换防换锁后及时刷新左侧列表
+        this._renderBackpack();
         this.openGearDetail(this.modalContext.index, this.modalContext.isBody);
         EBus.emit('ui_equips_update');
         EBus.emit('log', `📌 [${gear.name}] 已${gear.pinned ? '锁定防换' : '解除防换'}`, 'sys');
@@ -538,10 +548,7 @@ export class UIController {
         let slotName = this.modalContext.index;
         let gearToRemove = this.player.equips[slotName];
         
-        if (this.player.inventory.length >= 30) {
-            return alert('背包已满，无法卸下装备！');
-        }
-
+        // 🔒 移除背包容量限制：卸下装备直接进背包，不再判断容量
         this.player.inventory.push(gearToRemove);
         delete this.player.equips[slotName];
 
@@ -561,11 +568,10 @@ export class UIController {
         if (g.locked || g.pinned) {
             if (!confirm('该装备已锁定，确定出售吗？')) return;
         }
-        let price = Math.max(0, (g.rarityIdx + 1) * 20) * (g.enhanceLv + 1);
         
-        this.player.gold += price;
+        // 🔒 修改：调用通用分解方法，支持终焉装备产出精华
+        this.player.salvageGear(g);
         this.player.inventory.splice(this.modalContext.index, 1);
-        this.player.save();
         
         EBus.emit('ui_bars_update');
         // 🌟 核心修复：出售后保持部位筛选
@@ -575,25 +581,23 @@ export class UIController {
 
     batchSalvage() {
         let salvageCount = 0;
-        let goldEarned = 0;
-        // 🔒 一键/批量分解合并：不再固定精良，读取下拉框阈值；过滤已锁定装备
+        // 🔒 一键/批量分解合并：读取下拉框阈值；过滤已锁定装备
         let threshold = parseInt(document.getElementById('ui-salvage').value);
         if (threshold === -1) return alert("当前设置不会自动熔炼任何装备，请调整下拉框。");
         
         for (let i = this.player.inventory.length - 1; i >= 0; i--) {
             let g = this.player.inventory[i];
             if (g.rarityIdx <= threshold && !g.locked && !g.pinned) {
-                goldEarned += Math.max(0, (g.rarityIdx + 1) * 20);
+                // 🔒 修改：调用通用分解方法，支持终焉装备产出精华
+                this.player.salvageGear(g);
                 this.player.inventory.splice(i, 1);
                 salvageCount++;
             }
         }
         
         if (salvageCount > 0) {
-            this.player.gold += goldEarned;
-            this.player.save();
             EBus.emit('ui_bars_update');
-            EBus.emit('log', `♻️ 批量清理了 ${salvageCount} 件装备，获得 ${formatNumber(goldEarned)} 金币。`, 'sys');
+            EBus.emit('log', `♻️ 批量清理了 ${salvageCount} 件装备。`, 'sys');
             this._renderBackpack();
         } else {
             alert("没有符合条件且未锁定的装备可分解。");
@@ -675,6 +679,124 @@ export class UIController {
         EBus.emit('ui_equips_update');
         this.openGearDetail(this.modalContext.index, this.modalContext.isBody);
         EBus.emit('log', `✨ 强化成功！[${gear.name}] 提升至 +${gear.enhanceLv} 阶！`, 'sys');
+    }
+
+    // ==========================================
+    // 终焉精炼系统 UI 交互区
+    // ==========================================
+    
+    // 🔒 打开精炼模态窗口
+    openRefineModal() {
+        document.getElementById('refine-overlay').style.display = 'flex';
+        document.getElementById('refine-details').innerHTML = '<div style="color:#aaa;text-align:center;padding:20px;">← 请选择一件终焉装备</div>';
+        this.currentRefineGear = null;
+        this.renderRefineList();
+    }
+
+    // 🔒 渲染左侧终焉装备列表：包含背包中以及已装备的
+    // 🔒 渲染左侧终焉装备列表：包含已装备和背包中的
+    renderRefineList() {
+        let list = document.getElementById('refine-gear-list');
+        list.innerHTML = '';
+        this.currentRefineList = [];
+
+        // 🔒 排序逻辑：已装备的终焉装备按固定槽位顺序(武器、头盔、胸甲、护腿、戒坠、遗物)顶置
+        // 1. 优先收集身上穿戴的终焉装备
+        SLOTS.forEach(slot => {
+            let g = this.player.equips[slot];
+            if (g && g.rarityIdx === 8) {
+                this.currentRefineList.push(g);
+            }
+        });
+
+        // 2. 其次收集背包中的终焉装备
+        this.player.inventory.forEach(g => {
+            if (g.rarityIdx === 8) {
+                this.currentRefineList.push(g);
+            }
+        });
+
+        if (this.currentRefineList.length === 0) {
+            list.innerHTML = '<div style="color:#aaa;text-align:center;padding:20px;">没有终焉装备</div>';
+            return;
+        }
+
+        this.currentRefineList.forEach((gear, idx) => {
+            // 判断是否为身上穿戴的装备
+            let isEquipped = Object.values(this.player.equips).includes(gear);
+            list.innerHTML += `
+            <div class="inv-item" onclick="window.ui.selectRefineGear(${idx})" style="cursor:pointer; border:1px solid var(--q8); ${isEquipped ? 'background:rgba(255,0,85,0.1);' : ''}">
+                <div class="q8" style="font-weight:bold;">${isEquipped ? '[装备中] ' : ''}${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''}</div>
+                <div style="font-size:11px; margin-top:5px; color:var(--text-mut);">评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}</div>
+            </div>`;
+        });
+    }
+
+    // 🔒 选中装备，右侧显示词条详情
+    selectRefineGear(listIdx) {
+        let gear = this.currentRefineList[listIdx];
+        if (!gear) return;
+        this.currentRefineGear = gear;
+        
+        let detailDiv = document.getElementById('refine-details');
+        let html = `<div style="color:var(--q8);font-weight:bold;font-size:15px;margin-bottom:10px;">${gear.name} (精炼消耗: 3 终焉精华/次)</div>`;
+        
+        // 精华余额
+        html += `<div style="margin-bottom:15px;">当前精华: <span style="color:#f59e0b;font-weight:bold;">${this.player.finaleEssence}</span></div>`;
+        
+        const affixNames = { haste: '冷却缩减', crit: '暴击率', versa: '共鸣' };
+        const affixPool = ['haste', 'crit', 'versa'];
+        
+        affixPool.forEach(affix => {
+            if (gear.stats[affix] !== undefined) {
+                let currentVal = gear.stats[affix];
+                let currentRefineLv = gear.refineLevels[affix] || 0;
+                let cap = GearGenerator.getAffixCap(gear.slot, affix);
+                let nextInc = currentRefineLv >= 15 ? 0 : GearGenerator.getRefineIncrement(currentRefineLv);
+                
+                // 预期提升如果超上限，则截断显示
+                let actualNextInc = Math.min(nextInc, Math.max(0, cap - currentVal));
+                
+                html += `
+                <div style="background:var(--bg-dark);padding:10px;border-radius:4px;margin-bottom:8px;border:1px solid var(--border);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <span style="font-weight:bold;color:var(--primary)">${affixNames[affix]}</span>
+                            <span style="margin-left:10px;">当前: ${currentVal.toFixed(1)}%</span>
+                            <span style="margin-left:10px;color:var(--text-mut);">上限: ${cap}%</span>
+                        </div>
+                        ${currentRefineLv >= 15 || actualNextInc <= 0 ? 
+                            `<button disabled style="opacity:0.5;cursor:not-allowed;padding:4px 8px;">已满</button>` : 
+                            `<button onclick="window.ui.doRefine('${affix}')" style="background:var(--accent);border-color:var(--accent);cursor:pointer;padding:4px 8px;">精炼 (+${actualNextInc.toFixed(1)}%)</button>`
+                        }
+                    </div>
+                    <div style="font-size:12px;color:var(--text-mut);margin-top:5px;">
+                        精炼次数: ${currentRefineLv} / 15
+                    </div>
+                </div>`;
+            }
+        });
+        
+        detailDiv.innerHTML = html;
+    }
+
+    // 🔒 执行精炼操作
+    doRefine(affixKey) {
+        if (!this.currentRefineGear) return;
+        let result = this.player.refineAffix(this.currentRefineGear, affixKey);
+        if (result) {
+            EBus.emit('log', `⚗️ 精炼成功！[${this.currentRefineGear.name}] 提升了 ${result.increment.toFixed(1)}% (精炼等级: ${result.newLevel})`, 'sys');
+            // 刷新精炼界面和主界面
+            // 🔒 修复：即使是在身上装备精炼，也能正确找到index刷新
+            this.selectRefineGear(this.currentRefineList.indexOf(this.currentRefineGear));
+            EBus.emit('ui_bars_update');
+            EBus.emit('ui_equips_update');
+        } else {
+            // 可能精华不足或已满
+            if (this.player.finaleEssence < 3) {
+                alert('终焉精华不足！');
+            }
+        }
     }
 
     // ==========================================
@@ -764,7 +886,7 @@ export class UIController {
             
             let isOpener = this.currentLoadout.openers.includes(id);
 
-            // 🌟 核心文案回归：不再是难懂的机制解释词！简简单单最强硬的最原始版本"起手"！
+            // 🌟 核心文案回归：难懂的机制解释词消失！简简单单最强硬的最原始版本"起手"！
             ul.innerHTML += `
             <li class="seq-item" id="seq_dom_${id}">
                 <div>
