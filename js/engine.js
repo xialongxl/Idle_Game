@@ -100,6 +100,15 @@ export class GearGenerator {
         return 24; // 防具全限定24%
     }
 
+    static getEnhanceCost(gear) {
+        let baseCost = (gear.rarityIdx + 1) * 300;
+        return Math.floor(baseCost * Math.pow(1.8, gear.enhanceLv || 0));
+    }
+
+    static getEnhanceRate(gear) {
+        return Math.max(30, 95 - (gear.enhanceLv || 0) * 7);
+    }
+
     // 🌟 修复：支持指定槽位生成，给 GM 终焉套装提供底层支撑，防止强行覆盖导致属性错乱
     static generate(floor, fixedRarity = -1, fixedSlot = null) {
         let rVal = Math.random() * 100;
@@ -615,6 +624,78 @@ export class Player {
         this.recalcStats();
         this.save();
         return { increment: actualInc, newLevel: currentLv + 1 };
+    }
+
+    enhanceGear(gear) {
+        if (gear.enhanceLv >= 12) return { success: false, reason: 'max' };
+
+        let baseCost = (gear.rarityIdx + 1) * 300;
+        let cost = Math.floor(baseCost * Math.pow(1.8, gear.enhanceLv));
+        if (this.gold < cost) return { success: false, reason: 'gold' };
+
+        let successRate = Math.max(30, 95 - gear.enhanceLv * 7);
+        let roll = Math.random() * 100;
+        let isSuccess = roll < successRate;
+
+        this.gold -= cost;
+
+        if (isSuccess) {
+            gear.enhanceLv = (gear.enhanceLv || 0) + 1;
+
+            let powerMultiplier = 1.05 + (gear.enhanceLv * 0.03);
+
+            if (gear.slot === 'weapon') {
+                gear.stats.atk = Math.floor((gear.stats.atk || 0) * powerMultiplier) + 5;
+            } else if (gear.slot === 'ring' || gear.slot === 'trinket') {
+                gear.stats.atk = Math.floor((gear.stats.atk || 0) * powerMultiplier) + 2;
+                gear.stats.int = Math.floor((gear.stats.int || 0) * powerMultiplier) + 2;
+            } else {
+                gear.stats.int = Math.floor((gear.stats.int || 0) * powerMultiplier) + 5;
+            }
+
+            let affPool = ['haste', 'crit', 'versa'];
+            affPool.forEach(aff => {
+                if (gear.stats[aff]) {
+                    gear.stats[aff] += 0.5;
+
+                    if (aff === 'crit') {
+                        if (gear.slot === 'weapon') {
+                            gear.stats.crit = Math.min(50, gear.stats.crit);
+                        } else if (gear.slot === 'ring' || gear.slot === 'trinket') {
+                            gear.stats.crit = Math.min(15, gear.stats.crit);
+                        } else {
+                            gear.stats.crit = Math.min(12, gear.stats.crit);
+                        }
+                    }
+                    if (aff === 'haste') {
+                        if (gear.slot === 'ring' || gear.slot === 'trinket') {
+                            gear.stats.haste = Math.min(30, gear.stats.haste);
+                        } else {
+                            gear.stats.haste = Math.min(15, gear.stats.haste);
+                        }
+                    }
+                    if (aff === 'versa') {
+                        if (gear.slot === 'ring' || gear.slot === 'trinket') {
+                            gear.stats.versa = Math.min(40, gear.stats.versa);
+                        } else {
+                            gear.stats.versa = Math.min(15, gear.stats.versa);
+                        }
+                    }
+                }
+            });
+
+            let s = gear.stats;
+            let isA = (gear.slot === 'ring' || gear.slot === 'trinket');
+            if (gear.slot === 'weapon') gear.baseScore = Math.floor((s.atk||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
+            else if (isA) gear.baseScore = Math.floor((s.atk||0)*5 + (s.int||0)*5 + (s.haste||0)*1 + (s.crit||0)*1 + (s.versa||0)*1);
+            else gear.baseScore = Math.floor((s.int||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
+            this.recalcGearScore(gear);
+
+            this.recalcStats();
+        }
+
+        this.save();
+        return { success: isSuccess, cost, successRate };
     }
 
     lootItem(gear) {

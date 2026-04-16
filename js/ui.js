@@ -15,9 +15,11 @@ export class UIController {
         
         // Modal 面板弹窗的上下文临时缓存记录器
         this.modalContext = { targetGear: null, isBody: false, index: -1 };
-        this.currentFilterSlot = null; // 背包部位筛选状态
-        this.currentRefineGear = null; // 🔒 终焉精炼：当前选中的精炼装备
-        this.currentRefineList = [];   // 🔒 终焉精炼：当前可精炼的装备列表缓存
+        this.currentFilterSlot = null;
+        this.currentRefineGear = null;
+        this.currentRefineList = [];
+        this.currentEnhanceGear = null;
+        this.currentEnhanceList = [];
     }
 
     // 🌟 全局事件统合：所有的界面状态流转都在这里监听渲染
@@ -314,7 +316,6 @@ export class UIController {
         if (filterSlot) {
             document.getElementById('modal-title').innerText = `🎒 装备选取 - ${SLOT_NAMES[filterSlot]}`;
         } else {
-            // 🔒 虽然移除了容量上限，但仍需显示背包内物品的数量
             document.getElementById('modal-title').innerText = `🎒 星盘背包 (${this.player.inventory.length})`;
         }
 
@@ -428,9 +429,6 @@ export class UIController {
         document.getElementById('det-stats').innerHTML = statsHtml;
 
         let actionsDiv = document.getElementById('det-actions');
-        let enhancePrice = Math.max(100, (gear.rarityIdx + 1) * 300 * (gear.enhanceLv + 1));
-
-        let enhancePriceFmt = formatNumber(enhancePrice);
 
         // 🔒 恢复双锁按钮：普通锁(防误卖) 和 防换锁(防替换)
         let lockBtn = `<button onclick="window.ui.toggleLock()" style="border-color:#facc15;color:#facc15">${gear.locked ? '🔓 解锁' : '🔒 锁定'}</button>`;
@@ -439,9 +437,6 @@ export class UIController {
         if (isEquipped) {
             actionsDiv.innerHTML = `
                 ${lockBtn} ${pinBtn}
-                <button onclick="window.ui.enhanceGear()" style="background:var(--accent);border-color:var(--accent)">
-                    ⚒️ 花费 ${enhancePriceFmt}G 强化
-                </button>
                 <button onclick="window.ui.unequipGear()">👇 卸下放回背包</button>`;
         } else {
             actionsDiv.innerHTML = `
@@ -611,83 +606,6 @@ export class UIController {
         }
     }
 
-    enhanceGear() {
-        let gear = this.modalContext.targetGear;
-        let costNum = Math.max(100, (gear.rarityIdx + 1) * 300 * (gear.enhanceLv + 1));
-        
-        // 🌟 王者无敌的装备突破尽头：最高 +12 限制逻辑，避免无限膨胀与数值漏洞！
-        if (gear.enhanceLv >= 12) {
-            return alert('该装备已达 +12 强化上限！');
-        }
-
-        if (this.player.gold < costNum) {
-            return alert('金币不足！');
-        }
-
-        this.player.gold -= costNum;
-        gear.enhanceLv = (gear.enhanceLv || 0) + 1;
-
-        // 复利神级算法：+10以后呈爆裂般指数增长！
-        let powerMultiplier = 1.05 + (gear.enhanceLv * 0.03); 
-
-        // 主属性指数增长法则保障，且严密恪守武器/防具属性的隔离带
-        if (gear.slot === 'weapon') {
-            gear.stats.atk = Math.floor((gear.stats.atk || 0) * powerMultiplier) + 5;
-        } else if (gear.slot === 'ring' || gear.slot === 'trinket') {
-            gear.stats.atk = Math.floor((gear.stats.atk || 0) * powerMultiplier) + 2;
-            gear.stats.int = Math.floor((gear.stats.int || 0) * powerMultiplier) + 2;
-        } else {
-            gear.stats.int = Math.floor((gear.stats.int || 0) * powerMultiplier) + 5;
-        }
-
-        let affPool = ['haste', 'crit', 'versa'];
-        affPool.forEach(aff => {
-            if (gear.stats[aff]) {
-                gear.stats[aff] += 0.5;
-
-                // 哪怕是在神级系统强化里，也不能越过设定的暴击单件最高顶墙
-                if (aff === 'crit') {
-                    if (gear.slot === 'weapon') {
-                        gear.stats.crit = Math.min(50, gear.stats.crit);
-                    } else if (gear.slot === 'ring' || gear.slot === 'trinket') {
-                        gear.stats.crit = Math.min(15, gear.stats.crit);
-                    } else {
-                        gear.stats.crit = Math.min(12, gear.stats.crit);
-                    }
-                }
-                if (aff === 'haste') {
-                    if (gear.slot === 'ring' || gear.slot === 'trinket') {
-                        gear.stats.haste = Math.min(30, gear.stats.haste);
-                    } else {
-                        gear.stats.haste = Math.min(15, gear.stats.haste);
-                    }
-                }
-                if (aff === 'versa') {
-                    if (gear.slot === 'ring' || gear.slot === 'trinket') {
-                        gear.stats.versa = Math.min(40, gear.stats.versa);
-                    } else {
-                        gear.stats.versa = Math.min(15, gear.stats.versa);
-                    }
-                }
-            }
-        });
-
-        // 🔒 强化后重算基础评分及总分
-        let s = gear.stats;
-        let isA = (gear.slot === 'ring' || gear.slot === 'trinket');
-        if (gear.slot === 'weapon') gear.baseScore = Math.floor((s.atk||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
-        else if (isA) gear.baseScore = Math.floor((s.atk||0)*5 + (s.int||0)*5 + (s.haste||0)*1 + (s.crit||0)*1 + (s.versa||0)*1);
-        else gear.baseScore = Math.floor((s.int||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
-        this.player.recalcGearScore(gear);
-
-        this.player.recalcStats();
-        this.player.save();
-        EBus.emit('ui_bars_update');
-        EBus.emit('ui_equips_update');
-        this.openGearDetail(this.modalContext.index, this.modalContext.isBody);
-        EBus.emit('log', `✨ 强化成功！[${gear.name}] 提升至 +${gear.enhanceLv} 阶！`, 'sys');
-    }
-
     // ==========================================
     // 终焉精炼系统 UI 交互区
     // ==========================================
@@ -804,6 +722,185 @@ export class UIController {
                 alert('终焉精华不足！');
             }
         }
+    }
+
+    openEnhanceView() {
+        this.currentEnhanceGear = null;
+        document.getElementById('enhance-overlay').style.display = 'flex';
+        document.getElementById('enhance-details').innerHTML = '<div style="color:var(--text-mut);text-align:center;padding:20px;">← 请选择一件装备</div>';
+        this.renderEnhanceList();
+    }
+
+    renderEnhanceList() {
+        this.currentEnhanceList = [];
+        let list = document.getElementById('enhance-gear-list');
+        list.innerHTML = '';
+
+        SLOTS.forEach(slot => {
+            let g = this.player.equips[slot];
+            if (g) {
+                this.currentEnhanceList.push(g);
+            }
+        });
+
+        this.player.inventory.forEach(g => {
+            this.currentEnhanceList.push(g);
+        });
+
+        if (this.currentEnhanceList.length === 0) {
+            list.innerHTML = '<div style="color:var(--text-mut);text-align:center;padding:20px;">没有任何装备</div>';
+            return;
+        }
+
+        this.currentEnhanceList.forEach((gear, idx) => {
+            let isEquipped = Object.values(this.player.equips).includes(gear);
+            let isSelected = gear === this.currentEnhanceGear;
+            let enhanceTag = gear.enhanceLv > 0 ? `<span style="color:var(--accent)">+${gear.enhanceLv}</span>` : '';
+
+            list.innerHTML += `
+            <div class="inv-item" onclick="window.ui.selectEnhanceGear(${idx})" style="cursor:pointer; ${isSelected ? 'border-color:var(--accent);background:rgba(255,71,133,0.1);' : ''} ${isEquipped && !isSelected ? 'background:rgba(157,114,255,0.08);' : ''}">
+                <div style="font-weight:bold;" class="${GEAR_RARITY[gear.rarityIdx].color}">
+                    ${isEquipped ? '<span style="color:var(--primary);font-size:10px;">[装]</span> ' : ''}${gear.name} ${enhanceTag}
+                </div>
+                <div style="font-size:11px; margin-top:5px; color:var(--text-mut);">评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}</div>
+            </div>`;
+        });
+    }
+
+    renderEnhanceDetail() {
+        let gear = this.currentEnhanceGear;
+        let detailDiv = document.getElementById('enhance-details');
+
+        if (!gear) {
+            detailDiv.innerHTML = '<div style="color:var(--text-mut);text-align:center;padding:20px;">← 请选择一件装备</div>';
+            return;
+        }
+
+        let isEquipped = Object.values(this.player.equips).includes(gear);
+        let isAccessory = (gear.slot === 'ring' || gear.slot === 'trinket');
+
+        let html = `<div id="enhance-name" style="font-size:15px;font-weight:bold;margin-bottom:10px;">`;
+        html += `${isEquipped ? '<span style="color:var(--primary);font-size:11px;">[装备中]</span> ' : ''}`;
+        html += `<span class="${GEAR_RARITY[gear.rarityIdx].color}">${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''}</span></div>`;
+
+        html += `<div style="font-size:12px;color:var(--text-mut);margin-bottom:10px;">`;
+        html += `<b>强化等级: <span style="color:var(--accent)">${gear.enhanceLv || 0}</span> / 12</b><br>`;
+
+        if (gear.slot === 'weapon') {
+            html += `攻击力: ${formatNumber(Math.floor(gear.stats.atk || 0))}<br>`;
+        } else if (isAccessory) {
+            html += `攻击力: ${formatNumber(Math.floor(gear.stats.atk || 0))} | 防御力: ${formatNumber(Math.floor(gear.stats.int || 0))}<br>`;
+        } else {
+            html += `防御力: ${formatNumber(Math.floor(gear.stats.int || 0))}<br>`;
+        }
+
+        if (gear.stats.crit) html += `暴击率: +${gear.stats.crit.toFixed(1)}%　`;
+        if (gear.stats.haste) html += `冷却缩减: +${gear.stats.haste.toFixed(1)}%　`;
+        if (gear.stats.versa) html += `共鸣: +${gear.stats.versa.toFixed(1)}%　`;
+        html += `</div>`;
+
+        if (gear.enhanceLv < 12) {
+            let successRate = GearGenerator.getEnhanceRate(gear);
+            let cost = GearGenerator.getEnhanceCost(gear);
+            let rateColor = successRate >= 70 ? '#4ade80' : successRate >= 50 ? '#f59e0b' : '#ef4444';
+            let canAfford = this.player.gold >= cost;
+
+            html += `<div style="margin-top:10px; border-top:1px dashed var(--border); padding-top:10px;">`;
+            html += `成功率: <span style="color:${rateColor}; font-weight:bold; font-size:18px;">${successRate.toFixed(1)}%</span><br>`;
+            html += `费用: <span style="color:#facc15; font-weight:bold; font-size:14px;">${formatNumber(cost)} G</span><br>`;
+            html += `</div>`;
+
+            html += `<div style="display:flex; gap:8px; margin-top:15px; flex-wrap:wrap;">`;
+            html += `<button onclick="window.ui.doEnhance()" style="background:var(--accent);border-color:var(--accent);${canAfford ? '' : 'opacity:0.4;pointer-events:none;'}">⚒️ 强化</button>`;
+            html += `<button onclick="window.ui.batchEnhance(5)" style="border-color:#f59e0b;color:#f59e0b;${canAfford ? '' : 'opacity:0.4;pointer-events:none;'}">×5</button>`;
+            html += `<button onclick="window.ui.batchEnhance(10)" style="border-color:#f59e0b;color:#f59e0b;${canAfford ? '' : 'opacity:0.4;pointer-events:none;'}">×10</button>`;
+            html += `<button onclick="window.ui.batchEnhance(-1)" style="border-color:#ef4444;color:#ef4444;${canAfford ? '' : 'opacity:0.4;pointer-events:none;'}">×MAX</button>`;
+            html += `</div>`;
+        } else {
+            html += `<div style="margin-top:10px; color:var(--accent); font-weight:bold;">已达强化上限 +12</div>`;
+        }
+
+        detailDiv.innerHTML = html;
+    }
+
+    selectEnhanceGear(listIdx) {
+        this.currentEnhanceGear = this.currentEnhanceList[listIdx];
+        this.renderEnhanceDetail();
+        this.renderEnhanceList();
+    }
+
+    doEnhance() {
+        let gear = this.currentEnhanceGear;
+        if (!gear || gear.enhanceLv >= 12) return;
+
+        let result = this.player.enhanceGear(gear);
+
+        if (result.reason === 'gold') {
+            EBus.emit('log', '❌ 金币不足，无法强化！', 'err');
+            return;
+        }
+        if (result.reason === 'max') return;
+
+        if (result.success) {
+            EBus.emit('log', `✨ 强化成功！[${gear.name}] 提升至 +${gear.enhanceLv} 阶！`, 'sys');
+        } else {
+            EBus.emit('log', `💔 强化失败！[${gear.name}] 仍为 +${gear.enhanceLv}，损失 ${formatNumber(result.cost)}G`, 'err');
+        }
+
+        this.flashEnhanceResult(result.success);
+        EBus.emit('ui_bars_update');
+        EBus.emit('ui_equips_update');
+        this.renderEnhanceDetail();
+        this.renderEnhanceList();
+    }
+
+    flashEnhanceResult(success) {
+        let overlay = document.getElementById('enhance-overlay');
+        if (!overlay) return;
+        let cls = success ? 'enhance-flash-success' : 'enhance-flash-fail';
+        overlay.classList.add(cls);
+        setTimeout(() => overlay.classList.remove(cls), 500);
+    }
+
+    batchEnhance(target) {
+        let gear = this.currentEnhanceGear;
+        if (!gear || gear.enhanceLv >= 12) return;
+
+        let attempts = 0;
+        let successes = 0;
+        let totalCost = 0;
+        let maxAttempts = target === -1 ? 999 : target;
+
+        while (attempts < maxAttempts) {
+            if (gear.enhanceLv >= 12) break;
+            let cost = GearGenerator.getEnhanceCost(gear);
+            if (this.player.gold < cost) break;
+
+            let result = this.player.enhanceGear(gear);
+            attempts++;
+            totalCost += result.cost;
+
+            if (result.success) {
+                successes++;
+            }
+            if (target === -1 && result.success) break;
+        }
+
+        if (attempts === 0) {
+            if (this.player.gold < GearGenerator.getEnhanceCost(gear)) {
+                EBus.emit('log', '❌ 金币不足，无法强化！', 'err');
+            }
+            return;
+        }
+
+        let failMsg = attempts - successes > 0 ? `，失败 ${attempts - successes} 次` : '';
+        EBus.emit('log', `⚒️ 批量强化完成：尝试 ${attempts} 次，成功 ${successes} 次${failMsg}，共消耗 ${formatNumber(totalCost)}G → [${gear.name}] +${gear.enhanceLv}`, 'sys');
+
+        this.flashEnhanceResult(successes > 0);
+        EBus.emit('ui_bars_update');
+        EBus.emit('ui_equips_update');
+        this.renderEnhanceDetail();
+        this.renderEnhanceList();
     }
 
     // ==========================================

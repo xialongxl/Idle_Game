@@ -91,7 +91,7 @@
         .details-box { display: none; margin-top: 15px; padding: 10px; background: var(--bg-dark); border: 1px dashed var(--accent); border-radius: 4px;}
         
         /* 🔒 终焉精炼系统：独立模态窗口样式 */
-        #refine-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
+        #refine-overlay, #enhance-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
         .refine-modal { background: var(--bg-panel); border: 1px solid #ff0055; width: 700px; max-width: 90%; border-radius: 8px; display: flex; padding: 20px; max-height: 75vh; }
         .refine-left { width: 35%; border-right: 1px solid var(--border); padding-right: 15px; overflow-y: auto; }
         .refine-right { width: 65%; padding-left: 15px; overflow-y: auto; }
@@ -111,6 +111,11 @@
         @keyframes toast-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 
         .q0 { color: var(--q0); } .q1 { color: var(--q1); } .q2 { color: var(--q2); } .q3 { color: var(--q3); } .q4 { color: var(--q4); } .q5 { color: var(--q5); } .q6 { color: var(--q6); } .q7 { color: var(--q7); text-shadow: 0 0 3px var(--q7); } .q8 { color: var(--q8); text-shadow: 0 0 5px var(--q8); font-weight: bold; }
+
+        .enhance-flash-success { animation: flash-green 0.5s ease-out; }
+        .enhance-flash-fail { animation: flash-red 0.5s ease-out; }
+        @keyframes flash-green { 0% { box-shadow: 0 0 30px 10px rgba(74,222,128,0.6); } 100% { box-shadow: none; } }
+        @keyframes flash-red { 0% { box-shadow: 0 0 30px 10px rgba(239,68,68,0.6); } 100% { box-shadow: none; } }
     </style>
 </head>
 <!-- 🔒 禁用页面右键菜单，防止误操作和源码直接查看 -->
@@ -241,6 +246,7 @@
         </div>
         <div class="modal-foot">
             <button onclick="window.ui.batchSalvage()" style="margin-right:10px; border-color:#f59e0b; color:#f59e0b;">批量分解(≤选定品质)</button>
+            <button onclick="window.ui.openEnhanceView()" style="margin-right:10px; border-color:var(--accent); color:var(--accent);">⚒️ 强化锻造</button>
             <button onclick="document.getElementById('modal-overlay').style.display='none'">关闭终端</button>
         </div>
     </div>
@@ -256,6 +262,20 @@
         <div class="refine-right">
             <div id="refine-details"></div>
             <button onclick="document.getElementById('refine-overlay').style.display='none'" style="margin-top:15px; width:100%;">关闭精炼台</button>
+        </div>
+    </div>
+</div>
+
+<!-- 🔒 强化锻造系统：独立模态窗口，左右布局 -->
+<div id="enhance-overlay">
+    <div class="refine-modal" style="border-color:var(--accent);">
+        <div class="refine-left">
+            <div class="panel-title" style="margin-bottom:10px;">⚒️ 强化锻造台</div>
+            <div id="enhance-gear-list"></div>
+        </div>
+        <div class="refine-right">
+            <div id="enhance-details"></div>
+            <button onclick="document.getElementById('enhance-overlay').style.display='none'" style="margin-top:15px; width:100%;">关闭锻造台</button>
         </div>
     </div>
 </div>
