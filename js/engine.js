@@ -1,7 +1,7 @@
 // ==========================================
 // 末光咏叹 V3.3 - 核心逻辑引警 (防假死与数值闭环版 - 全量修复与功能补全)
 // ==========================================
-import { SKILLS_DB, GEAR_RARITY, SLOTS, SLOT_NAMES, ORBS, MAX_SAME_ORB, SLOT_BASE_NAMES } from './data.js';
+import { SKILLS_DB, GEAR_RARITY, SLOTS, SLOT_NAMES, ORBS, MAX_SAME_ORB, SLOT_BASE_NAMES, AFFIXES } from './data.js';
 
 // ==========================================
 // 0. 全局工具：大数值格式化工厂
@@ -44,6 +44,70 @@ export class EventBus {
     }
 }
 export const EBus = new EventBus();
+
+// ==========================================
+// 1.5 进阶拾取过滤器 LootFilter
+// 功能：按部位+品质+词条组合规则精确控制拾取/分解
+// 优先级：部位规则 > 全局规则 > 旧版品质下拉框（兼容保留）
+// ==========================================
+export class LootFilter {
+    static STORAGE_KEY = 'loot_filter_rules';
+
+    static _defaultRule() {
+        return { minRarity: -1, requiredAffixes: [], minAffixValues: {} };
+    }
+
+    static loadRules() {
+        return Storage.get(this.STORAGE_KEY, {
+            global: this._defaultRule(),
+            slots: {}
+        });
+    }
+
+    static saveRules(rules) {
+        Storage.set(this.STORAGE_KEY, rules);
+    }
+
+    static resetRules() {
+        Storage.set(this.STORAGE_KEY, {
+            global: this._defaultRule(),
+            slots: {}
+        });
+    }
+
+    static applyPreset(presetId) {
+        let rules = { global: this._defaultRule(), slots: {} };
+        if (presetId === 'finale_only') {
+            rules.global.minRarity = 8;
+        } else if (presetId === 'high_crit_accessory') {
+            rules.global.minRarity = 5;
+            rules.slots.ring = { minRarity: 5, requiredAffixes: ['crit'], minAffixValues: { crit: 5 } };
+            rules.slots.trinket = { minRarity: 5, requiredAffixes: ['crit'], minAffixValues: { crit: 5 } };
+        } else if (presetId === 'mythic_above') {
+            rules.global.minRarity = 6;
+        }
+        this.saveRules(rules);
+        return rules;
+    }
+
+    static shouldKeep(gear) {
+        let rules = this.loadRules();
+        let rule = rules.slots[gear.slot] || rules.global;
+        if (rule.minRarity === -1 && rule.requiredAffixes.length === 0 && Object.keys(rule.minAffixValues).length === 0) {
+            let autoThreshold = Storage.get('auto_salvage_threshold', -1);
+            if (autoThreshold > -1 && gear.rarityIdx <= autoThreshold) return false;
+            return true;
+        }
+        if (rule.minRarity > -1 && gear.rarityIdx < rule.minRarity) return false;
+        for (let aff of rule.requiredAffixes) {
+            if (!gear.stats[aff] || gear.stats[aff] <= 0) return false;
+        }
+        for (let aff in rule.minAffixValues) {
+            if (!gear.stats[aff] || gear.stats[aff] < rule.minAffixValues[aff]) return false;
+        }
+        return true;
+    }
+}
 
 // ==========================================
 // 2. 本地持久化封装类 Storage
@@ -730,11 +794,8 @@ export class Player {
             return; // 装备已处理，结束
         }
 
-        // 🔒 自动分解阈值：从持久化存储读取（-1表示不自动分解）
-        let autoThreshold = Storage.get('auto_salvage_threshold', -1);
-
-        // 🔒 阈值判定：品质低于阈值的装备直接分解，不进背包
-        if (autoThreshold > -1 && gear.rarityIdx <= autoThreshold) {
+        // 🔒 进阶拾取过滤：优先使用 LootFilter 规则，兼容旧版品质下拉框
+        if (!LootFilter.shouldKeep(gear)) {
             let salvageVal = this.salvageGear(gear);
             let essenceLog = gear.rarityIdx === 8 ? '，获得 1 终焉精华' : '';
             EBus.emit('log', `♻️ 自动熔炼了 <span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span>，获得 ${formatNumber(salvageVal)} G${essenceLog}`, 'sys');

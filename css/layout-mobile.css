@@ -1,0 +1,74 @@
+@media (max-width: 768px) {
+    body { flex-direction: column; }
+
+    .mobile-tabs { display: flex; }
+
+    .wrapper { flex-direction: column; width: 100%; height: calc(100vh - 42px); overflow: hidden; }
+
+    .col-left, .col-mid, .col-right {
+        width: 100%;
+        border-right: none;
+        display: none;
+        overflow-y: auto;
+        flex: 1;
+    }
+    .col-left.active, .col-mid.active, .col-right.active {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .panel { padding: 10px; }
+    .panel-title { font-size: 14px; margin-bottom: 8px; flex-wrap: wrap; gap: 5px; }
+
+    .stats-grid { gap: 5px; }
+    .stat-item { padding: 6px; font-size: 11px; }
+
+    .equip-grid { gap: 8px; }
+
+    .combat-controls { flex-wrap: wrap; gap: 6px; }
+    .combat-controls > div { flex-wrap: wrap; gap: 4px; }
+
+    .map-radar { font-size: 11px; flex-wrap: wrap; gap: 2px; padding: 8px; }
+    .map-node { padding: 2px 5px; font-size: 10px; }
+
+    .monster-area { height: 130px; }
+    .monster-name { font-size: 16px; }
+
+    .log-area { font-size: 12px; padding: 10px; line-height: 1.4; }
+
+    .pool-grid { grid-template-columns: 1fr; }
+    .skill-btn { padding: 6px; }
+    .s-desc { font-size: 10px; }
+
+    .seq-item { padding: 6px; }
+
+    .modal { width: 95%; max-height: 90vh; }
+    .inv-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; padding: 10px; }
+    #modal-content-area { max-height: 50vh; }
+
+    .refine-modal {
+        flex-direction: column;
+        width: 95%;
+        max-height: 90vh;
+        padding: 15px;
+    }
+    .refine-left {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding-right: 0;
+        padding-bottom: 10px;
+        max-height: 35vh;
+    }
+    .refine-right {
+        width: 100%;
+        padding-left: 0;
+        padding-top: 10px;
+    }
+
+    button { min-height: 36px; min-width: 36px; }
+
+    .loot-filter-modal { width: 95%; max-height: 90vh; padding: 15px; }
+
+    #gm-panel { bottom: 10px; left: 10px; right: 10px; }
+}

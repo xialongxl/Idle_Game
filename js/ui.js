@@ -2,8 +2,8 @@
 // 界面 UI 控制器及其交互核心
 // 负责全面响应引擎的数据驱动 及事件下发
 // ==========================================
-import { SKILLS_DB, GEAR_RARITY, SLOTS, SLOT_NAMES, ORBS, MAX_SAME_ORB } from './data.js';
-import { EBus, Storage, formatNumber, GearGenerator } from './engine.js';
+import { SKILLS_DB, GEAR_RARITY, SLOTS, SLOT_NAMES, ORBS, MAX_SAME_ORB, AFFIXES } from './data.js';
+import { EBus, Storage, formatNumber, GearGenerator, LootFilter } from './engine.js';
 
 export class UIController {
     constructor(player) {
@@ -906,6 +906,88 @@ export class UIController {
     // ==========================================
     // 战阵与连招技能池宏体系 UI 初始化
     // ==========================================
+    renderDynamicDesc(skill) {
+        let p = this.player;
+        let desc = skill.desc;
+        let atk = p.stats.atk;
+        let versa = p.stats.versa || 0;
+        let versaMult = 1 + versa / 100;
+        let dmgUp = 1 + (p.stats.dmg_up_pct || 0) / 100;
+
+        if (desc.includes('{dmg}')) {
+            let dmg = Math.floor(atk * skill.dmgMult * versaMult * dmgUp);
+            desc = desc.replace('{dmg}', formatNumber(Math.max(1, dmg)));
+        }
+        if (desc.includes('{dmgMult}')) {
+            desc = desc.replace('{dmgMult}', (skill.dmgMult * 100).toFixed(0));
+        }
+        if (desc.includes('{cost}')) {
+            desc = desc.replace('{cost}', skill.cost);
+        }
+        if (desc.includes('{cd}')) {
+            desc = desc.replace('{cd}', skill.cd > 0 ? (skill.cd / 1000).toFixed(1) : '0');
+        }
+        if (desc.includes('{dur}')) {
+            let dur = 0;
+            if (skill.effects && skill.effects.length > 0) {
+                dur = skill.effects[0].dur || 0;
+            }
+            desc = desc.replace('{dur}', (dur / 1000).toFixed(0));
+        }
+        if (desc.includes('{dps}')) {
+            let dps = 0;
+            if (skill.effects) {
+                let dotEff = skill.effects.find(e => e.type === 'dot');
+                if (dotEff) dps = dotEff.dps || 0;
+            }
+            desc = desc.replace('{dps}', (dps * 100).toFixed(0));
+        }
+        if (desc.includes('{heal}')) {
+            let healPow = Math.max(atk, p.stats.int);
+            let healMult = 0;
+            if (skill.effects) {
+                let healEff = skill.effects.find(e => e.type === 'heal');
+                if (healEff) healMult = healEff.val || 0;
+            }
+            let healVal = Math.floor(healPow * healMult);
+            desc = desc.replace('{heal}', formatNumber(healVal));
+        }
+        if (desc.includes('{healMult}')) {
+            let healMult = 0;
+            if (skill.effects) {
+                let healEff = skill.effects.find(e => e.type === 'heal');
+                if (healEff) healMult = healEff.val || 0;
+            }
+            desc = desc.replace('{healMult}', (healMult * 100).toFixed(0));
+        }
+        if (desc.includes('{mpRecover}')) {
+            let pct = 0;
+            if (skill.effects) {
+                let mpEff = skill.effects.find(e => e.type === 'mp_recover_pct');
+                if (mpEff) pct = mpEff.val || 0;
+            }
+            desc = desc.replace('{mpRecover}', formatNumber(Math.floor(p.getMaxMp() * pct)));
+        }
+        if (desc.includes('{hotPerTick}')) {
+            let pct = 0;
+            if (skill.effects) {
+                let hotEff = skill.effects.find(e => e.type === 'hot');
+                if (hotEff) pct = hotEff.pct || 0;
+            }
+            desc = desc.replace('{hotPerTick}', formatNumber(Math.floor(p.getMaxHp() * pct)));
+        }
+        if (desc.includes('{shieldVal}')) {
+            let hpPct = 0;
+            if (skill.effects) {
+                let shieldEff = skill.effects.find(e => e.type === 'shield');
+                if (shieldEff) hpPct = shieldEff.hpPct || 0;
+            }
+            desc = desc.replace('{shieldVal}', formatNumber(Math.floor(p.getMaxHp() * hpPct)));
+        }
+
+        return desc;
+    }
+
     initSkillPool() {
         let poolContainer = document.getElementById('ui-skill-pool');
         poolContainer.innerHTML = '';
@@ -925,7 +1007,7 @@ export class UIController {
                     ${isLocked ? `<span style="color:#ef4444;font-size:10px">Lv.${s.reqLv}解</span>` : ''}
                 </div>
                 <div style="font-size:10px;color:#a855f7">${s.type.toUpperCase()} | 耗蓝:${s.cost}</div>
-                <div class="s-desc">${s.desc}</div>
+                <div class="s-desc">${this.renderDynamicDesc(s)}</div>
             </div>`;
         });
     }
@@ -1273,5 +1355,128 @@ export class UIController {
 
         // 🔒 输出汇总日志
         window.engine.log(`📥 导入完成。常规技能: ${dedupedIds.length}，起手: ${dedupedOpeners.length}。`, 'sys');
+    }
+
+    openLootFilter() {
+        document.getElementById('loot-filter-overlay').style.display = 'flex';
+        this._renderLootFilter();
+        document.querySelectorAll('.lf-preset-btn').forEach(btn => {
+            btn.onclick = () => {
+                let preset = btn.dataset.preset;
+                if (preset === 'reset') {
+                    LootFilter.resetRules();
+                } else {
+                    LootFilter.applyPreset(preset);
+                }
+                this._renderLootFilter();
+            };
+        });
+        document.getElementById('btn-lf-save').onclick = () => {
+            this._saveLootFilter();
+            document.getElementById('loot-filter-overlay').style.display = 'none';
+            EBus.emit('log', '🔍 拾取过滤规则已保存。', 'sys');
+        };
+    }
+
+    _renderLootFilter() {
+        let rules = LootFilter.loadRules();
+        let body = document.getElementById('loot-filter-body');
+        let html = '';
+
+        html += this._renderLootFilterSection('全局规则', rules.global, 'global');
+        SLOTS.forEach(slot => {
+            let slotRule = rules.slots[slot] || { minRarity: -1, requiredAffixes: [], minAffixValues: {} };
+            html += this._renderLootFilterSection(SLOT_NAMES[slot], slotRule, 'slot_' + slot);
+        });
+
+        body.innerHTML = html;
+
+        body.querySelectorAll('.lf-section-toggle').forEach(toggle => {
+            toggle.onclick = () => {
+                let content = toggle.nextElementSibling;
+                content.style.display = content.style.display === 'none' ? 'block' : 'none';
+            };
+        });
+    }
+
+    _renderLootFilterSection(title, rule, prefix) {
+        let rarityOptions = '<option value="-1">继承全局/使用下拉框</option>';
+        GEAR_RARITY.forEach((r, i) => {
+            rarityOptions += `<option value="${i}" ${rule.minRarity === i ? 'selected' : ''}>${r.name}</option>`;
+        });
+
+        let affixChecks = '';
+        AFFIXES.forEach(a => {
+            let checked = rule.requiredAffixes.includes(a.id) ? 'checked' : '';
+            affixChecks += `<label style="font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:3px; margin-right:10px;">
+                <input type="checkbox" class="lf-affix" data-prefix="${prefix}" data-affix="${a.id}" ${checked}> ${a.name}
+            </label>`;
+        });
+
+        let affixValues = '';
+        AFFIXES.forEach(a => {
+            let val = rule.minAffixValues[a.id] || '';
+            affixValues += `<div style="display:flex; align-items:center; gap:5px; margin-bottom:4px;">
+                <span style="font-size:12px; width:60px; text-align:right;">${a.name}≥</span>
+                <input type="number" class="lf-affix-val" data-prefix="${prefix}" data-affix="${a.id}" value="${val}" min="0" step="0.5" style="width:60px; background:var(--bg-dark); color:var(--text-main); border:1px solid var(--border); padding:3px; text-align:center;">
+            </div>`;
+        });
+
+        return `<div class="lf-section">
+            <div class="lf-section-toggle" style="cursor:pointer; padding:6px 10px; background:var(--bg-dark); border-radius:4px; margin-bottom:6px; display:flex; justify-content:space-between;">
+                <span style="font-weight:bold; color:var(--primary);">${title}</span>
+                <span style="color:var(--text-mut); font-size:11px;">▼ 展开</span>
+            </div>
+            <div class="lf-section-content" style="padding:0 10px 10px; ${prefix === 'global' ? '' : 'display:none;'}">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                    <span style="font-size:12px;">最低品质：</span>
+                    <select class="lf-rarity" data-prefix="${prefix}" style="background:var(--bg-dark); color:var(--text-main); border:1px solid var(--border); padding:3px;">${rarityOptions}</select>
+                </div>
+                <div style="margin-bottom:6px;">
+                    <span style="font-size:12px;">必需词条：</span>
+                    ${affixChecks}
+                </div>
+                <div>
+                    <span style="font-size:12px; display:block; margin-bottom:4px;">词条最低数值：</span>
+                    ${affixValues}
+                </div>
+            </div>
+        </div>`;
+    }
+
+    _saveLootFilter() {
+        let rules = { global: { minRarity: -1, requiredAffixes: [], minAffixValues: {} }, slots: {} };
+
+        let globalRarityEl = document.querySelector('.lf-rarity[data-prefix="global"]');
+        rules.global.minRarity = parseInt(globalRarityEl.value);
+        document.querySelectorAll('.lf-affix[data-prefix="global"]:checked').forEach(cb => {
+            rules.global.requiredAffixes.push(cb.dataset.affix);
+        });
+        document.querySelectorAll('.lf-affix-val[data-prefix="global"]').forEach(inp => {
+            if (inp.value && parseFloat(inp.value) > 0) {
+                rules.global.minAffixValues[inp.dataset.affix] = parseFloat(inp.value);
+            }
+        });
+
+        SLOTS.forEach(slot => {
+            let prefix = 'slot_' + slot;
+            let rarityEl = document.querySelector(`.lf-rarity[data-prefix="${prefix}"]`);
+            let rarityVal = parseInt(rarityEl.value);
+            let reqAffixes = [];
+            document.querySelectorAll(`.lf-affix[data-prefix="${prefix}"]:checked`).forEach(cb => {
+                reqAffixes.push(cb.dataset.affix);
+            });
+            let minVals = {};
+            document.querySelectorAll(`.lf-affix-val[data-prefix="${prefix}"]`).forEach(inp => {
+                if (inp.value && parseFloat(inp.value) > 0) {
+                    minVals[inp.dataset.affix] = parseFloat(inp.value);
+                }
+            });
+            if (rarityVal > -1 || reqAffixes.length > 0 || Object.keys(minVals).length > 0) {
+                rules.slots[slot] = { minRarity: rarityVal, requiredAffixes: reqAffixes, minAffixValues: minVals };
+            }
+        });
+
+        LootFilter.saveRules(rules);
     }
 }

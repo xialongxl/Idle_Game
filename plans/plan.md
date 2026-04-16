@@ -303,6 +303,121 @@ class CombatStats {
 
 ---
 
-## 存档兼容原则
+## Phase 3.5：跨平台自适应 UI（CSS 模块化重构 + 响应式）
 
-所有新增字段在 `Player.load()` 中必须提供默认值回退，确保旧版存档无缝升级，与现有 `refineLevels`、`pinned` 等字段的兼容处理方式保持一致。
+**目标**：将 CSS 从 `index.html` 的 `<style>` 标签拆分为模块化文件，并实现 PC/移动端自动适配。
+
+### 文件结构
+
+```
+css/
+├── main.css          # 入口文件：@import 其他文件 + 响应式规则
+├── base.css          # 公共样式：变量、重置、按钮、颜色、日志等
+├── layout-pc.css     # PC 端布局：三列宽度、网格、间距
+└── layout-mobile.css # 移动端覆盖：单列、全宽、弹窗适配、Tab 导航
+```
+
+### `index.html` 修改
+
+1. 添加 `<meta name="viewport">` 标签
+2. 删除 `<style>` 全部内容，替换为 `<link rel="stylesheet" href="css/main.css">`
+3. 在 `.wrapper` 之前添加手机端 Tab 导航 HTML
+
+### 手机端 Tab 导航
+
+`<nav class="mobile-tabs">` 三个按钮切换角色/战斗/技能面板。PC 端 `display:none`，手机端 `display:flex`。JS 点击 Tab 切换面板 `.active` 类。
+
+### 关键注意
+
+- 桌面端体验零改动，移动端覆盖仅通过 `layout-mobile.css` 触发
+- 不引入外部框架，纯原生
+- 弹窗左右布局在手机端自动转上下布局
+- 所有原有颜色/尺寸/动画不变，只拆分归类
+
+---
+
+## Phase 3.5：跨平台自适应 UI
+
+**目标**：让游戏在桌面、平板、手机上均可正常使用。
+
+**当前问题**：
+- 缺少 `<meta name="viewport">` 标签，移动端缩放异常
+- 三栏固定比例布局（25%/45%/30%），窄屏下内容挤压不可用
+- 弹窗（背包、精炼、强化）固定宽度，手机上溢出
+- 按钮和文字尺寸在小屏上太小，触控不友好
+- 战斗控制区（按钮+速度+血线）在小屏上溢出换行混乱
+- 地图雷达在窄屏上挤压变形
+
+### 实现方案
+
+#### 1. 添加 viewport meta 标签
+
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+```
+
+#### 2. 响应式断点设计
+
+| 断点 | 设备 | 布局策略 |
+|------|------|----------|
+| ≥ 1024px | 桌面 | 三栏并排（现有布局，不变） |
+| 768px ~ 1023px | 平板 | 两栏：左栏(角色+装备) + 右栏(战斗+技能)，技能序列折叠为 Tab |
+| < 768px | 手机 | 单栏垂直滚动，三栏通过 Tab 切换 |
+
+#### 3. CSS 媒体查询规则
+
+**平板 (768px ~ 1023px)**：
+- `.wrapper` 改为两栏：`col-left` 35% + `col-mid/right` 合并为 65%
+- `col-right` 的技能序列编辑器通过 Tab 按钮切换显示/隐藏
+- 战斗控制区 `flex-wrap: wrap`
+- 地图雷达字体缩小
+
+**手机 (<768px)**：
+- `.wrapper` 改为 `flex-direction: column`，三栏垂直堆叠
+- 顶部增加 Tab 导航栏：[角色] [战斗] [技能]，切换显示对应面板
+- `.col-left` / `.col-mid` / `.col-right` 宽度 100%，只显示当前激活的 Tab
+- 弹窗 `.modal` 和 `.refine-modal` 改为 `width: 95%`、`max-height: 90vh`
+- `.refine-modal` 在手机上改为 `flex-direction: column`（上下布局代替左右）
+- 按钮最小触控尺寸 36px × 36px
+- 字体微调：`font-size: 13px` → `12px`，小元素更紧凑
+
+#### 4. 手机 Tab 导航
+
+在手机端，于 `.wrapper` 之前插入一个固定在顶部的 Tab 栏：
+
+```html
+<nav class="mobile-tabs">
+    <button class="mobile-tab active" data-panel="col-left">👤 角色</button>
+    <button class="mobile-tab" data-panel="col-mid">⚔️ 战斗</button>
+    <button class="mobile-tab" data-panel="col-right">🧠 技能</button>
+</nav>
+```
+
+CSS：桌面端 `display:none`，手机端 `display:flex`。
+JS：点击 Tab 切换显示对应面板，隐藏其他面板。
+
+#### 5. 弹窗适配
+
+- `.modal`：手机端 `width: 95%; max-height: 90vh`
+- `.refine-modal`：手机端 `flex-direction: column; width: 95%`
+- `.refine-left` / `.refine-right`：手机端 `width: 100%`，取消左右分割
+- `#modal-content-area`：手机端 `max-height: 50vh`
+
+### 涉及文件
+
+- `index.html`
+  - 添加 `<meta name="viewport">` 标签
+  - 添加手机端 Tab 导航 HTML
+- `index.html` `<style>` 块
+  - 新增 `@media (max-width: 1023px)` 规则（平板）
+  - 新增 `@media (max-width: 767px)` 规则（手机）
+  - 新增 `.mobile-tabs` / `.mobile-tab` 样式
+- `js/main.js`
+  - 添加手机端 Tab 切换事件监听
+
+### 关键注意
+
+- 桌面端（≥1024px）体验零改动，所有变化仅通过媒体查询触发
+- 手机端 Tab 切换不依赖路由，纯 CSS display 控制
+- 不引入任何外部 CSS 框架，纯原生实现
+- 弹窗内的左右布局（精炼/强化）在手机端自动转为上下布局

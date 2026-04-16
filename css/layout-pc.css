@@ -1,0 +1,21 @@
+body { display: flex; }
+
+.wrapper { display: flex; width: 100%; height: 100%; }
+.col-left { width: 25%; border-right: 1px solid var(--border); background: var(--bg-panel); display: flex; flex-direction: column; overflow-y: auto;}
+.col-mid { width: 45%; border-right: 1px solid var(--border); display: flex; flex-direction: column; position: relative; }
+.col-right { width: 30%; background: var(--bg-panel); display: flex; flex-direction: column; }
+
+#modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 90; justify-content: center; align-items: center; }
+.modal { background: var(--bg-panel); border: 1px solid var(--primary); width: 600px; max-width: 90%; border-radius: 8px; display: flex; flex-direction: column; max-height: 80vh; }
+.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; padding: 15px; overflow-y:auto;}
+#modal-content-area { max-height: 60vh; overflow-y: auto; }
+
+#refine-overlay, #enhance-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
+#loot-filter-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
+.refine-modal { background: var(--bg-panel); border: 1px solid #ff0055; width: 700px; max-width: 90%; border-radius: 8px; display: flex; padding: 20px; max-height: 75vh; }
+.refine-left { width: 35%; border-right: 1px solid var(--border); padding-right: 15px; overflow-y: auto; }
+.refine-right { width: 65%; padding-left: 15px; overflow-y: auto; }
+
+#gm-panel { display: none; position: fixed; bottom: 20px; left: 20px; background: rgba(30,30,45,0.95); border: 1px solid var(--accent); padding: 15px; border-radius: 8px; z-index: 100; transition: transform 0.3s;}
+#gm-panel.collapsed { transform: translateY(calc(100% - 30px)); }
+#gm-panel.visible { display: block; }

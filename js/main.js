@@ -89,7 +89,19 @@ window.onload = () => {
         document.getElementById('file-import-save').click();
     });
 
-    // 🔒 文件选择变更事件：读取上传的JSON文件并覆盖写入 localStorage
+    // 🔒 手机端 Tab 切换：点击底部导航按钮切换显示对应面板
+    const mobileTabs = document.querySelectorAll('.mobile-tab');
+    const panels = { 'col-left': document.querySelector('.col-left'), 'col-mid': document.querySelector('.col-mid'), 'col-right': document.querySelector('.col-right') };
+    mobileTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            mobileTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            Object.values(panels).forEach(p => p.classList.remove('active'));
+            panels[tab.dataset.panel].classList.add('active');
+        });
+    });
+    if (window.innerWidth <= 768) panels['col-left'].classList.add('active');
+
     document.getElementById('file-import-save').addEventListener('change', (e) => {
         let file = e.target.files[0];
         if (!file) return;
