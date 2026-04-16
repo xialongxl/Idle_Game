@@ -718,6 +718,7 @@ export class CombatEngine {
         this.floor = this.getFloorAfterRetreat(savedFloor);
         this.state = 'camp';
         this.paused = false;
+        this.autoDepart = Storage.get('auto_depart', false);
 
         // requestAnimationFrame 驱动，100ms 一次 tick 判定
         this.lastTime = performance.now();
@@ -893,6 +894,10 @@ export class CombatEngine {
                 this.player.hp = Math.min(this.player.getMaxHp(), this.player.hp + this.player.getMaxHp() * 0.05 * (deltaTime / 1000));
                 this.player.mp = Math.min(this.player.getMaxMp(), this.player.mp + this.player.getMaxMp() * 0.05 * (deltaTime / 1000));
                 EBus.emit('ui_bars_update');
+            }
+            // 🔒 自动出发：血量与法力补满后，若开关开启则自动离开营地继续探索
+            if (this.autoDepart && this.player.hp >= this.player.getMaxHp() && this.player.mp >= this.player.getMaxMp()) {
+                this.startExplore();
             }
             return;
         }

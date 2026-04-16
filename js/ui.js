@@ -190,6 +190,13 @@ export class UIController {
         document.getElementById('ui-retreat-pct').value = Storage.get('retreat_pct', 30);
         document.getElementById('ui-retreat-pct').addEventListener('change', e => Storage.set('retreat_pct', e.target.value));
 
+        // 🔒 自动出发开关：营地血量补满后自动继续探索
+        document.getElementById('ui-auto-depart').checked = Storage.get('auto_depart', false);
+        document.getElementById('ui-auto-depart').addEventListener('change', e => {
+            Storage.set('auto_depart', e.target.checked);
+            window.engine.autoDepart = e.target.checked;
+        });
+
         document.getElementById('btn-clear-seq').addEventListener('click', () => {
             this.currentLoadout.ids = [];
             this.currentLoadout.openers = [];

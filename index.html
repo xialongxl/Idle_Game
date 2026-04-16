@@ -182,7 +182,10 @@
                     <button id="btn-retreat" style="border-color:#f59e0b; color:#f59e0b; margin-left:5px;">🏃 紧急撤离</button>
                     <button id="btn-heal" style="border-color:#4ade80; color:#4ade80; margin-left:5px;">💉 瞬间痊愈(50G)</button>
                 </div>
-                <div style="font-size:12px;">
+                <div style="font-size:12px; display:flex; align-items:center; gap:8px;">
+                    <label style="cursor:pointer;" title="营地血量补满后自动出发探索">
+                        <input type="checkbox" id="ui-auto-depart"> 自动出发
+                    </label>
                     安全血线: <input type="number" id="ui-retreat-pct" value="30" style="width:45px; background:var(--bg-dark); color:#fff; border:1px solid var(--border); text-align:center;">%
                 </div>
                 <div id="speed-controls">
