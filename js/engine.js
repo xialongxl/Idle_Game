@@ -763,9 +763,17 @@ export class Player {
     }
 
     lootItem(gear) {
-        // 🔒 终焉/极品自动装备逻辑：只要比当前穿的评分高且没上防替换锁，直接自动换上
+        // 🔒 最高优先级：进阶过滤规则，不通过的装备直接分解
+        if (!LootFilter.shouldKeep(gear)) {
+            let salvageVal = this.salvageGear(gear);
+            let essenceLog = gear.rarityIdx === 8 ? '，获得 1 终焉精华' : '';
+            EBus.emit('log', `♻️ 自动熔炼了 <span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span>，获得 ${formatNumber(salvageVal)} G${essenceLog}`, 'sys');
+            EBus.emit('ui_bars_update');
+            return;
+        }
+
+        // 🔒 通过过滤后，自动替换逻辑
         let currentEquip = this.equips[gear.slot];
-        // 🔒 核心修复：使用 || 0 防止旧版 undefined 评分导致判断失效
         if (!currentEquip || (gear.score > (currentEquip.score || 0) && !currentEquip.pinned)) {
             let oldGear = this.equips[gear.slot];
             this.equips[gear.slot] = gear;
@@ -791,15 +799,6 @@ export class Player {
             
             this.save();
             EBus.emit('ui_equips_update');
-            return; // 装备已处理，结束
-        }
-
-        // 🔒 进阶拾取过滤：优先使用 LootFilter 规则，兼容旧版品质下拉框
-        if (!LootFilter.shouldKeep(gear)) {
-            let salvageVal = this.salvageGear(gear);
-            let essenceLog = gear.rarityIdx === 8 ? '，获得 1 终焉精华' : '';
-            EBus.emit('log', `♻️ 自动熔炼了 <span class="${GEAR_RARITY[gear.rarityIdx].color}">[${gear.name}]</span>，获得 ${formatNumber(salvageVal)} G${essenceLog}`, 'sys');
-            EBus.emit('ui_bars_update');
             return;
         }
 

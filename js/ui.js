@@ -20,6 +20,7 @@ export class UIController {
         this.currentRefineList = [];
         this.currentEnhanceGear = null;
         this.currentEnhanceList = [];
+        this._bindLootFilterEvents();
     }
 
     // 🌟 全局事件统合：所有的界面状态流转都在这里监听渲染
@@ -583,14 +584,15 @@ export class UIController {
 
     batchSalvage() {
         let salvageCount = 0;
-        // 🔒 一键/批量分解合并：读取下拉框阈值；过滤已锁定装备
+        let rules = LootFilter.loadRules();
+        let hasAdvancedRules = rules.global.minRarity > -1 || rules.global.requiredAffixes.length > 0 || Object.keys(rules.global.minAffixValues).length > 0 || Object.keys(rules.slots).length > 0;
         let threshold = parseInt(document.getElementById('ui-salvage').value);
-        if (threshold === -1) return alert("当前设置不会自动熔炼任何装备，请调整下拉框。");
-        
+
         for (let i = this.player.inventory.length - 1; i >= 0; i--) {
             let g = this.player.inventory[i];
-            if (g.rarityIdx <= threshold && !g.locked && !g.pinned) {
-                // 🔒 修改：调用通用分解方法，支持终焉装备产出精华
+            if (g.locked || g.pinned) continue;
+            let shouldSalvage = hasAdvancedRules ? !LootFilter.shouldKeep(g) : (threshold > -1 && g.rarityIdx <= threshold);
+            if (shouldSalvage) {
                 this.player.salvageGear(g);
                 this.player.inventory.splice(i, 1);
                 salvageCount++;
@@ -1360,6 +1362,9 @@ export class UIController {
     openLootFilter() {
         document.getElementById('loot-filter-overlay').style.display = 'flex';
         this._renderLootFilter();
+    }
+
+    _bindLootFilterEvents() {
         document.querySelectorAll('.lf-preset-btn').forEach(btn => {
             btn.onclick = () => {
                 let preset = btn.dataset.preset;
@@ -1400,7 +1405,8 @@ export class UIController {
     }
 
     _renderLootFilterSection(title, rule, prefix) {
-        let rarityOptions = '<option value="-1">继承全局/使用下拉框</option>';
+        let placeholderText = prefix === 'global' ? '不设品质门槛（回退到下拉框）' : '继承全局规则';
+        let rarityOptions = `<option value="-1" ${rule.minRarity === -1 ? 'selected' : ''}>${placeholderText}</option>`;
         GEAR_RARITY.forEach((r, i) => {
             rarityOptions += `<option value="${i}" ${rule.minRarity === i ? 'selected' : ''}>${r.name}</option>`;
         });
