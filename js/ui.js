@@ -1032,12 +1032,19 @@ export class UIController {
         });
     }
 
-    loadSequenceData() {
-        let allLoadouts = Storage.get('loadout_sets', {});
-        if (!allLoadouts[this.currentTab]) {
-            allLoadouts[this.currentTab] = { ids: ['s01'], openers: [] };
-        }
-        this.currentLoadout = allLoadouts[this.currentTab];
+	loadSequenceData() {
+		let allLoadouts = Storage.get('loadout_sets', {});
+		// 旧技能ID迁移映射（Phase 4.5 重编号后兼容旧存档）
+		const idMig = { 's38':'s39','s39':'s42','s40':'s44','s41':'s46','s42':'s47' };
+		const migArr = arr => arr.map(id => idMig[id] || id);
+		for (let tab in allLoadouts) {
+			allLoadouts[tab].ids = migArr(allLoadouts[tab].ids);
+			allLoadouts[tab].openers = migArr(allLoadouts[tab].openers);
+		}
+		if (!allLoadouts[this.currentTab]) {
+			allLoadouts[this.currentTab] = { ids: ['s01'], openers: [] };
+		}
+		this.currentLoadout = allLoadouts[this.currentTab];
         this.renderSequence();
         this.saveSequence();
     }

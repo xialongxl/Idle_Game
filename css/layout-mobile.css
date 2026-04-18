@@ -42,9 +42,9 @@
 
     .seq-item { padding: 6px; }
 
-    .modal { width: 95%; max-height: 90vh; }
-    .inv-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; padding: 10px; }
-    #modal-content-area { max-height: 50vh; }
+.modal { width: 95%; max-height: 90vh; }
+.inv-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; padding: 10px; }
+#modal-content-area { overflow-y: visible; }
 
     .refine-modal {
         flex-direction: column;

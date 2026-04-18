@@ -341,11 +341,43 @@ const effectHandlers = {
         engine.player.buffs.push({ type: 'hot', pct: e.pct, dur: e.dur, tickTimer: 0 });
         return '获得[持续恢复] ';
     },
-    shield: (e, engine) => {
-        let shieldVal = Math.floor(engine.player.getMaxHp() * (e.hpPct || 0));
-        engine.player.buffs.push({ type: 'shield', val: shieldVal, dur: e.dur || 10000 });
-        return `升起法力壁垒(吸收${formatNumber(shieldVal)}) `;
-    }
+	shield: (e, engine) => {
+		let shieldVal = Math.floor(engine.player.getMaxHp() * (e.hpPct || 0));
+		engine.player.buffs.push({ type: 'shield', val: shieldVal, dur: e.dur || 10000 });
+		return `升起法力壁垒(吸收${formatNumber(shieldVal)}) `;
+	},
+	cd_reset: (e, engine) => {
+		engine.skills.forEach(sk => { if (!sk.isFinale) sk.currentCd = 0; });
+		return '⏱️ 时间回溯！重置所有常规技能冷却！ ';
+	},
+	hp_sacrifice: (e, engine) => {
+		let hpCost = Math.floor(engine.player.hp * e.costPct);
+		engine.player.hp = Math.max(1, engine.player.hp - hpCost);
+		let v = 1.0;
+		engine.mob.buffs.forEach(b => { if (b.type === 'vuln') v *= b.val; });
+		let dmg = hpCost * e.dmgMult * (1 + (engine.player.stats.versa || 0) / 100) * v * (1 + (engine.player.stats.dmg_up_pct || 0) / 100);
+		dmg = Math.max(1, Math.floor(dmg));
+		engine.mob.hp -= dmg;
+		engine.player.buffs.push({ type: 'buff', stat: 'dmg_up_pct', val: 30, dur: 10000 });
+		engine.player.recalcStats();
+		return `💀 灵魂献祭！消耗 ${formatNumber(hpCost)} HP，造成 ${formatNumber(dmg)} 伤害 `;
+	},
+	channel_immune: (e, engine) => {
+		engine.player.buffs.push({ type: 'channel_immune', dur: e.dur });
+		engine.mob.buffs.push({ type: 'dot', dur: e.dur, dps: 4.0, tickTimer: 0 });
+		return '☄️ 星辰坠落！进入无敌持续轰击状态！ ';
+	},
+	cond_full_heal: (e, engine) => {
+		engine.player.hp = engine.player.getMaxHp();
+		engine.player.mp = engine.player.getMaxMp();
+		engine.player.buffs.push({ type: 'buff', stat: 'dmg_up_pct', val: 50, dur: 15000 });
+		engine.player.recalcStats();
+		return '🔮 命运逆转！生命与法力完全恢复！ ';
+	},
+	dot_enhance: (e, engine) => {
+		engine.player.buffs.push({ type: 'dot_enhance', dur: e.dur });
+		return '🌀 虚空化身！持续伤害大幅增强！ ';
+	}
 };
 
 // ==========================================
@@ -853,7 +885,12 @@ export class CombatEngine {
         this.player = player;
         // 把数据转换为可跟踪 CD 的运行时状态
         this.skills = SKILLS_DB.map(s => new Skill(s));
-        this.sequence = Storage.get('curr_seq_data', { ids: [], openers: [] });
+		this.sequence = Storage.get('curr_seq_data', { ids: [], openers: [] });
+		// 旧技能ID迁移映射（Phase 4.5 重编号后兼容旧存档）
+		const idMigration = { 's38':'s39','s39':'s42','s40':'s44','s41':'s46','s42':'s47' };
+		const migrateIds = arr => arr.map(id => idMigration[id] || id);
+		this.sequence.ids = migrateIds(this.sequence.ids);
+		this.sequence.openers = migrateIds(this.sequence.openers);
 
         let savedFloor = Storage.get('engine_floor', 1);
         this.floor = this.getFloorAfterRetreat(savedFloor);
@@ -1074,9 +1111,14 @@ export class CombatEngine {
         
         this.mob.attackTimer += deltaTime;
         
-        // 怪物读条满了，发动攻击
-        if (this.mob.attackTimer >= this.mob.attackSpeed) {
-            this.mob.attackTimer = 0;
+	// 怪物读条满了，发动攻击
+	if (this.mob.attackTimer >= this.mob.attackSpeed) {
+		// 免疫状态检测：免疫期间不受任何伤害
+		if (this.player.buffs.some(b => b.type === 'channel_immune')) {
+			this.mob.attackTimer = 0;
+			return;
+		}
+		this.mob.attackTimer = 0;
             let absorb = 0;
             
             // 先尝试提取玩家当前的护盾总值
@@ -1161,14 +1203,18 @@ export class CombatEngine {
                 vulnMult *= eff.val; // 核心修复：多个易伤独立相乘
             }
 
-            eff.tickTimer = (eff.tickTimer || 0) + deltaTime;
-            // 🔴 修复：DoT 字段从 tickDmg 重命名为 dps，保持术语闭环
-            if (eff.type === 'dot' && eff.tickTimer >= 1000) {
-                eff.tickTimer -= 1000;
-                let res = this.calcDmg(eff.dps, vulnMult);
-                this.mob.hp -= res.val;
-                this.log(`☠️ [流血跳跃] 造成 ${formatNumber(res.val)} 点伤害`, 'sys');
-            }
+		eff.tickTimer = (eff.tickTimer || 0) + deltaTime;
+		// DoT 增益检测：虚空化身期间 tick 间隔减半、伤害翻倍
+		let dotTickInterval = 1000;
+		let dotEnhance = this.player.buffs.some(b => b.type === 'dot_enhance');
+		if (dotEnhance) dotTickInterval = 500;
+		if (eff.type === 'dot' && eff.tickTimer >= dotTickInterval) {
+			eff.tickTimer -= dotTickInterval;
+			let effectiveDps = dotEnhance ? eff.dps * 2 : eff.dps;
+			let res = this.calcDmg(effectiveDps, vulnMult);
+			this.mob.hp -= res.val;
+			this.log(`☠️ [流血跳跃] 造成 ${formatNumber(res.val)} 点伤害`, 'sys');
+		}
             
             if (eff.dur <= 0) {
                 this.mob.buffs.splice(i, 1);
@@ -1193,8 +1239,12 @@ export class CombatEngine {
     }
 
     // ====== 最强防假执行意图判定 (心血结晶，绝无乱插队) ======
-    attemptExecution() {
-        if (!this.sequence || this.sequence.ids.length === 0) {
+	attemptExecution() {
+		// 蓄力状态检测：蓄力期间不可施放任何技能
+		if (this.player.buffs.some(b => b.type === 'channel_immune')) {
+			return;
+		}
+		if (!this.sequence || this.sequence.ids.length === 0) {
             // 没有排任何轴的话，就一直平A兜底
             if (this.gcdRemaining <= 0) {
                 this.executeSkill(this.skills[0]);
@@ -1266,8 +1316,15 @@ export class CombatEngine {
         }
     }
 
-    executeSkill(s) {
-        this.player.mp -= s.cost;
+	executeSkill(s) {
+		// 条件技能前置检查：不满足条件则不执行、不消耗、不触发CD
+		if (s.conditionMaxHPPct !== undefined) {
+			let hpPct = (this.player.hp / this.player.getMaxHp()) * 100;
+			if (hpPct > s.conditionMaxHPPct) {
+				return;
+			}
+		}
+		this.player.mp -= s.cost;
         
         // 🌟 修复：传入终焉冷却缩减值，支持终焉宝珠生效
         s.startCD(this.player.stats.finale_cd || 0);

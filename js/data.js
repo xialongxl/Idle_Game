@@ -1,4 +1,4 @@
-export const SKILLS_DB = [
+﻿export const SKILLS_DB = [
     { id: 's01', name: '魔力弹', reqLv: 1, type: 'gcd', cd: 0, cost: 0, dmgMult: 1.0, priority: 1, desc:'[GCD] 造成{dmgMult}%攻击力伤害（约{dmg}），无消耗无冷却。' },
     
     { id: 's02', name: '光辉护甲', reqLv: 3, type: 'buff', cd: 30000, cost: 15, dmgMult: 0, effects:[{type:'buff', stat:'versa', val:10, dur:15000}], priority: 9, desc:'[Buff] 提升共鸣10%，持续{dur}秒，消耗{cost}法力，冷却{cd}秒。' },
@@ -45,11 +45,16 @@ export const SKILLS_DB = [
     { id: 's36', name: '灾厄降临', reqLv: 79, type: 'dot', cd: 30000, cost: 50, dmgMult: 3.0, effects:[{type:'dot', dur:12000, dps:3.0}], priority: 10, desc:'[DoT] 立即造成{dmgMult}%攻击力伤害（约{dmg}），后续每秒造成{dps}%攻击力伤害，持续{dur}秒，消耗{cost}法力，冷却{cd}秒。' },
     { id: 's37', name: '破晓之光', reqLv: 80, type: 'gcd', cd: 20000, cost: 35, dmgMult: 5.0, priority: 6, desc:'[GCD] 造成{dmgMult}%攻击力伤害（约{dmg}），消耗{cost}法力，冷却{cd}秒。' },
     
-    { id: 's38', name: '终焉咏叹调', reqLv: 85, type: 'gcd', cd: 60000, cost: 80, dmgMult: 12.0, priority: 14, desc:'[终焉][GCD] 造成{dmgMult}%攻击力伤害（约{dmg}），消耗{cost}法力，冷却{cd}秒。' },
-    { id: 's39', name: '星蚀·黑洞', reqLv: 90, type: 'dot', cd: 90000, cost: 100, dmgMult: 5.0, effects:[{type:'dot', dur:15000, dps:5.0}], priority: 15, desc:'[终焉][DoT] 立即造成{dmgMult}%攻击力伤害（约{dmg}），后续每秒造成{dps}%攻击力伤害，持续{dur}秒，消耗{cost}法力，冷却{cd}秒。' },
-    { id: 's40', name: '法则解构', reqLv: 95, type: 'debuff', cd: 120000, cost: 50, dmgMult: 0, effects:[{type:'vuln', val:1.5, dur:15000}], priority: 17, desc:'[终焉][Debuff] 使目标受到的伤害提高50%，持续{dur}秒，消耗{cost}法力，冷却{cd}秒。' },
-    { id: 's41', name: '无限魔阵', reqLv: 99, type: 'buff', cd: 150000, cost: 0, dmgMult: 0, effects:[{type:'buff', stat:'versa', val:50, dur:20000}, {type:'mp_recover_pct', val:1.0}], priority: 18, desc:'[终焉][Buff] 提升共鸣50%，持续{dur}秒，并完全恢复法力值，无消耗，冷却{cd}秒。' },
-    { id: 's42', name: '阿赖耶识·斩', reqLv: 100, type: 'ogcd', cd: 180000, cost: 150, dmgMult: 25.0, priority: 20, desc:'[终焉][oGCD] 造成{dmgMult}%攻击力伤害（约{dmg}），消耗{cost}法力，冷却{cd}秒。' },
+  { id: 's38', name: '时间回溯', reqLv: 82, type: 'ogcd', cd: 180000, cost: 100, dmgMult: 0, effects:[{type:'cd_reset'},{type:'buff',stat:'haste',val:50,dur:5000}], priority: 19, desc:'[终焉][oGCD] 扭曲时间，重置所有常规技能冷却并大幅提升施法速度。消耗{cost}法力，冷却{cd}秒。' },
+  { id: 's39', name: '终焉咏叹调', reqLv: 85, type: 'gcd', cd: 60000, cost: 80, dmgMult: 12.0, priority: 14, desc:'[终焉][GCD] 造成{dmgMult}%攻击力伤害（约{dmg}），消耗{cost}法力，冷却{cd}秒。' },
+  { id: 's40', name: '灵魂献祭', reqLv: 87, type: 'gcd', cd: 180000, cost: 0, dmgMult: 0, effects:[{type:'hp_sacrifice',costPct:0.5,dmgMult:20},{type:'buff',stat:'dmg_up_pct',val:30,dur:10000}], priority: 16, desc:'[终焉][GCD] 献祭生命精华，造成巨额伤害并进入强化状态。冷却{cd}秒。' },
+  { id: 's41', name: '虚空化身', reqLv: 88, type: 'buff', cd: 180000, cost: 80, dmgMult: 0, effects:[{type:'dot_enhance',dur:15000}], priority: 18, desc:'[终焉][Buff] 化身虚空，接下来15秒内所有持续伤害的伤害提高100%，生效间隔缩短50%。消耗{cost}法力，冷却{cd}秒。' },
+  { id: 's42', name: '星蚀·黑洞', reqLv: 90, type: 'dot', cd: 90000, cost: 100, dmgMult: 5.0, effects:[{type:'dot', dur:15000, dps:5.0}], priority: 15, desc:'[终焉][DoT] 立即造成{dmgMult}%攻击力伤害（约{dmg}），后续每秒造成{dps}%攻击力伤害，持续{dur}秒，消耗{cost}法力，冷却{cd}秒。' },
+  { id: 's43', name: '星辰坠落', reqLv: 93, type: 'gcd', cd: 180000, cost: 120, dmgMult: 0, effects:[{type:'channel_immune',dur:8000},{type:'dot',dur:8000,dps:4.0}], priority: 17, desc:'[终焉][GCD] 召唤星辰坠落，持续轰击敌人的同时自身进入无敌状态。消耗{cost}法力，冷却{cd}秒。' },
+  { id: 's44', name: '法则解构', reqLv: 95, type: 'debuff', cd: 120000, cost: 50, dmgMult: 0, effects:[{type:'vuln', val:1.5, dur:15000}], priority: 17, desc:'[终焉][Debuff] 使目标受到的伤害提高50%，持续{dur}秒，消耗{cost}法力，冷却{cd}秒。' },
+  { id: 's45', name: '命运轮转', reqLv: 96, type: 'ogcd', cd: 180000, cost: 0, dmgMult: 0, conditionMaxHPPct:30, effects:[{type:'cond_full_heal'},{type:'buff',stat:'dmg_up_pct',val:50,dur:15000}], priority: 20, desc:'[终焉][oGCD] 绝境中逆转命运，瞬间恢复全部状态并大幅强化。冷却{cd}秒。' },
+  { id: 's46', name: '无限魔阵', reqLv: 99, type: 'buff', cd: 150000, cost: 0, dmgMult: 0, effects:[{type:'buff', stat:'versa', val:50, dur:20000}, {type:'mp_recover_pct', val:1.0}], priority: 18, desc:'[终焉][Buff] 提升共鸣50%，持续{dur}秒，并完全恢复法力值，无消耗，冷却{cd}秒。' },
+  { id: 's47', name: '阿赖耶识·斩', reqLv: 100, type: 'ogcd', cd: 180000, cost: 150, dmgMult: 25.0, priority: 20, desc:'[终焉][oGCD] 造成{dmgMult}%攻击力伤害（约{dmg}），消耗{cost}法力，冷却{cd}秒。' },
 
     { id: 's_passive_01', name: '终焉之力', reqLv: 1, type: 'passive', cd: 0, cost: 0, dmgMult: 0, priority: 0, desc:'[被动] 造成伤害提高10%，受到伤害降低10%。' }
 ];

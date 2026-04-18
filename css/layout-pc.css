@@ -7,8 +7,10 @@ body { display: flex; }
 
 #modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 90; justify-content: center; align-items: center; }
 .modal { background: var(--bg-panel); border: 1px solid var(--primary); width: 600px; max-width: 90%; border-radius: 8px; display: flex; flex-direction: column; max-height: 80vh; }
-.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; padding: 15px; overflow-y:auto;}
-#modal-content-area { max-height: 60vh; overflow-y: auto; }
+.modal-body { flex: 1; overflow-y: auto; min-height: 0; }
+.modal-foot { flex-shrink: 0; padding: 15px; border-top: 1px solid var(--border); }
+.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; padding: 15px; }
+#modal-content-area { overflow-y: visible; }
 
 #refine-overlay, #enhance-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
 #loot-filter-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
