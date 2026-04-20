@@ -18,9 +18,11 @@ export class UIController {
         this.currentFilterSlot = null;
         this.currentRefineGear = null;
         this.currentRefineList = [];
-        this.currentEnhanceGear = null;
-        this.currentEnhanceList = [];
-        this._bindLootFilterEvents();
+		this.currentEnhanceGear = null;
+		this.currentEnhanceList = [];
+		this._bindLootFilterEvents();
+		// 背包排序状态：'default' | 'score_desc' | 'score_asc'
+		this.backpackSortMode = Storage.get('backpack_sort_mode', 'default');
     }
 
     // 🌟 全局事件统合：所有的界面状态流转都在这里监听渲染
@@ -307,45 +309,69 @@ export class UIController {
         }
     }
 
-    _renderBackpack() {
-        document.getElementById('modal-overlay').style.display = 'flex';
+	_renderBackpack() {
+		document.getElementById('modal-overlay').style.display = 'flex';
 
-        let area = document.getElementById('modal-content-area');
-        area.innerHTML = '';
+		let area = document.getElementById('modal-content-area');
+		area.innerHTML = '';
 
-        let filterSlot = this.currentFilterSlot;
-        if (filterSlot) {
-            document.getElementById('modal-title').innerText = `🎒 装备选取 - ${SLOT_NAMES[filterSlot]}`;
-        } else {
-            document.getElementById('modal-title').innerText = `🎒 星盘背包 (${this.player.inventory.length})`;
-        }
+		let filterSlot = this.currentFilterSlot;
+		if (filterSlot) {
+			document.getElementById('modal-title').innerText = `🎒 装备选取 - ${SLOT_NAMES[filterSlot]}`;
+		} else {
+			document.getElementById('modal-title').innerText = `🎒 星盘背包 (${this.player.inventory.length})`;
+		}
 
-        let hasItem = false;
-        this.player.inventory.forEach((gear, i) => {
-            // 如果有筛选槽位，且装备不是该槽位，则跳过不显示
-            if (filterSlot && gear.slot !== filterSlot) {
-                return; 
-            }
-            
-            hasItem = true;
-            area.innerHTML += `
-            <div class="inv-item" onclick="window.ui.openGearDetail(${i}, false)">
-                <div class="${GEAR_RARITY[gear.rarityIdx].color}" style="font-weight:bold;">
-                    ${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''} ${gear.pinned ? '📌' : (gear.locked ? '🔒' : '')}
-                </div>
-                <div style="font-size:11px; margin-top:5px; color:var(--text-mut);">总评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}</div>
-            </div>`;
-        });
+		this._updateSortBtnLabel();
 
-        if (!hasItem) {
-            area.innerHTML += `<div style='color:gray; width:100%; text-align:center; padding:20px;'>${filterSlot ? '没有找到适合该部位的装备' : '行囊空空如也...'}</div>`;
-        }
+		// 收集筛选后的装备及其原始索引
+		let items = [];
+		this.player.inventory.forEach((gear, i) => {
+			if (filterSlot && gear.slot !== filterSlot) return;
+			items.push({ gear, i });
+		});
 
-        // 底部增加切回全材料视图的按钮
-        if (filterSlot) {
-            area.innerHTML += `<button onclick="window.ui.openBackpack()" style="width:100%; margin-top:15px; background:transparent; border:1px dashed #666; color:#aaa; cursor:pointer; padding:5px;">↩ 显示全部装备</button>`;
-        }
-    }
+		// 按排序模式排列
+		if (this.backpackSortMode === 'score_desc') {
+			items.sort((a, b) => (b.gear.score || 0) - (a.gear.score || 0));
+		} else if (this.backpackSortMode === 'score_asc') {
+			items.sort((a, b) => (a.gear.score || 0) - (b.gear.score || 0));
+		}
+
+		if (items.length === 0) {
+			area.innerHTML += `<div style='color:gray; width:100%; text-align:center; padding:20px;'>${filterSlot ? '没有找到适合该部位的装备' : '行囊空空如也...'}</div>`;
+		} else {
+			items.forEach(({ gear, i }) => {
+				area.innerHTML += `
+				<div class="inv-item" onclick="window.ui.openGearDetail(${i}, false)">
+					<div class="${GEAR_RARITY[gear.rarityIdx].color}" style="font-weight:bold;">
+						${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''} ${gear.pinned ? '📌' : (gear.locked ? '🔒' : '')}
+					</div>
+					<div style="font-size:11px; margin-top:5px; color:var(--text-mut);">总评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}</div>
+				</div>`;
+			});
+		}
+
+		// 底部增加切回全材料视图的按钮
+		if (filterSlot) {
+			area.innerHTML += `<button onclick="window.ui.openBackpack()" style="width:100%; margin-top:15px; background:transparent; border:1px dashed #666; color:#aaa; cursor:pointer; padding:5px;">↩ 显示全部装备</button>`;
+		}
+	}
+
+	cycleSortMode() {
+		const order = ['default', 'score_desc', 'score_asc'];
+		let idx = order.indexOf(this.backpackSortMode);
+		this.backpackSortMode = order[(idx + 1) % order.length];
+		Storage.set('backpack_sort_mode', this.backpackSortMode);
+		this._renderBackpack();
+	}
+
+	_updateSortBtnLabel() {
+		let btn = document.getElementById('btn-sort-backpack');
+		if (!btn) return;
+		const labels = { default: '默认顺序', score_desc: '评分 ↓', score_asc: '评分 ↑' };
+		btn.textContent = labels[this.backpackSortMode] || '默认顺序';
+	}
 
     openGearDetail(idxOrSlot, isEquipped) {
         document.getElementById('modal-overlay').style.display = 'flex';

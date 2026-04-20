@@ -131,7 +131,10 @@
 
 <div id="modal-overlay">
     <div class="modal">
-        <div class="panel-title" style="padding: 15px 15px 0; margin:0;" id="modal-title">物资与强化面板</div>
+        <div class="panel-title" style="padding: 15px 15px 0; margin:0; display:flex; justify-content:space-between; align-items:center;">
+      <span id="modal-title">物资与强化面板</span>
+      <button id="btn-sort-backpack" onclick="window.ui.cycleSortMode()" style="font-size:12px; padding:2px 8px; border:1px solid var(--border); background:transparent; color:var(--text-mut); cursor:pointer; white-space:nowrap;">默认顺序</button>
+    </div>
         <div class="modal-body">
             <div id="modal-content-area" class="inv-grid"></div>
             <div id="item-details" class="details-box">
