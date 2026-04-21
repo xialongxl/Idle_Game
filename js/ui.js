@@ -18,11 +18,14 @@ export class UIController {
         this.currentFilterSlot = null;
         this.currentRefineGear = null;
         this.currentRefineList = [];
-		this.currentEnhanceGear = null;
-		this.currentEnhanceList = [];
-		this._bindLootFilterEvents();
-		// 背包排序状态：'default' | 'score_desc' | 'score_asc'
-		this.backpackSortMode = Storage.get('backpack_sort_mode', 'default');
+	this.currentEnhanceGear = null;
+	this.currentEnhanceList = [];
+	this._bindLootFilterEvents();
+	// 背包排序状态：'default' | 'score_desc' | 'score_asc'
+	this.backpackSortMode = Storage.get('backpack_sort_mode', 'default');
+	// 批量分解模式状态
+	this.batchMode = false;
+	this.batchChecked = new Set();
     }
 
     // 🌟 全局事件统合：所有的界面状态流转都在这里监听渲染
@@ -342,38 +345,137 @@ export class UIController {
 			area.innerHTML += `<div style='color:gray; width:100%; text-align:center; padding:20px;'>${filterSlot ? '没有找到适合该部位的装备' : '行囊空空如也...'}</div>`;
 		} else {
 			items.forEach(({ gear, i }) => {
+				let isEquipped = !!this.player.equips[gear.slot] && this.player.equips[gear.slot] === gear;
+				let cantCheck = gear.locked || gear.pinned || isEquipped;
+				let cbHtml = '';
+				if (this.batchMode) {
+					if (cantCheck) {
+						cbHtml = `<input type="checkbox" disabled style="margin-right:6px; opacity:0.3;" />`;
+					} else {
+						cbHtml = `<input type="checkbox" class="batch-cb" data-idx="${i}" ${this.batchChecked.has(i) ? 'checked' : ''} onchange="window.ui._toggleBatchCb(${i}, this.checked)" style="margin-right:6px;" />`;
+					}
+				}
 				area.innerHTML += `
-				<div class="inv-item" onclick="window.ui.openGearDetail(${i}, false)">
-					<div class="${GEAR_RARITY[gear.rarityIdx].color}" style="font-weight:bold;">
-						${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''} ${gear.pinned ? '📌' : (gear.locked ? '🔒' : '')}
+				<div class="inv-item" onclick="${this.batchMode ? '' : `window.ui.openGearDetail(${i}, false)`}" style="display:flex; align-items:center; ${cantCheck && this.batchMode ? 'opacity:0.5;' : ''}">
+					${cbHtml}
+					<div style="flex:1; cursor:pointer;">
+						<div class="${GEAR_RARITY[gear.rarityIdx].color}" style="font-weight:bold;">
+							${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''} ${gear.pinned ? '📌' : (gear.locked ? '🔒' : '')} ${isEquipped ? '⚔️' : ''}
+						</div>
+						<div style="font-size:11px; margin-top:5px; color:var(--text-mut);">总评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}</div>
 					</div>
-					<div style="font-size:11px; margin-top:5px; color:var(--text-mut);">总评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}</div>
 				</div>`;
 			});
 		}
 
-		// 底部增加切回全材料视图的按钮
-		if (filterSlot) {
+		if (!this.batchMode && filterSlot) {
 			area.innerHTML += `<button onclick="window.ui.openBackpack()" style="width:100%; margin-top:15px; background:transparent; border:1px dashed #666; color:#aaa; cursor:pointer; padding:5px;">↩ 显示全部装备</button>`;
 		}
+
+		this._renderModalFoot();
 	}
 
-	cycleSortMode() {
-		const order = ['default', 'score_desc', 'score_asc'];
-		let idx = order.indexOf(this.backpackSortMode);
-		this.backpackSortMode = order[(idx + 1) % order.length];
-		Storage.set('backpack_sort_mode', this.backpackSortMode);
+	enterBatchMode() {
+		this.batchMode = true;
+		this.batchChecked = new Set();
 		this._renderBackpack();
 	}
 
-	_updateSortBtnLabel() {
-		let btn = document.getElementById('btn-sort-backpack');
-		if (!btn) return;
-		const labels = { default: '默认顺序', score_desc: '评分 ↓', score_asc: '评分 ↑' };
-		btn.textContent = labels[this.backpackSortMode] || '默认顺序';
+	_renderModalFoot() {
+		let bar = document.getElementById('modal-foot-bar');
+		if (!bar) return;
+		if (this.batchMode) {
+			let count = this.batchChecked.size;
+			let rarityOpts = GEAR_RARITY.map((r, idx) => `<option value="${idx}">${r.name}</option>`).join('');
+			bar.innerHTML = `
+			<select id="batch-rarity-sel" style="font-size:12px; padding:2px 4px; margin-right:6px;">${rarityOpts}</select>
+			<button onclick="window.ui.batchSelectByRarity()" style="margin-right:10px; border-color:var(--border); color:var(--text-main);">全选此品质</button>
+			<button onclick="window.ui.batchSelectAll()" style="margin-right:10px; border-color:var(--border); color:var(--text-main);">全选</button>
+			<button onclick="window.ui.batchDoSalvage()" style="margin-right:10px; border-color:#f59e0b; color:#f59e0b;">分解所选(${count})</button>
+			<button onclick="window.ui.openEnhanceView()" style="margin-right:10px; border-color:var(--accent); color:var(--accent);">⚒️ 强化锻造</button>
+			<button onclick="window.ui.exitBatchMode()">取消</button>`;
+		} else {
+			bar.innerHTML = `
+			<button onclick="window.ui.enterBatchMode()" style="margin-right:10px; border-color:#f59e0b; color:#f59e0b;">批量分解</button>
+			<button onclick="window.ui.openEnhanceView()" style="margin-right:10px; border-color:var(--accent); color:var(--accent);">⚒️ 强化锻造</button>
+			<button onclick="document.getElementById('modal-overlay').style.display='none'">关闭终端</button>`;
+		}
 	}
 
-    openGearDetail(idxOrSlot, isEquipped) {
+	exitBatchMode() {
+		this.batchMode = false;
+		this.batchChecked = new Set();
+		this._renderBackpack();
+	}
+
+	_toggleBatchCb(idx, checked) {
+		if (checked) {
+			this.batchChecked.add(idx);
+		} else {
+			this.batchChecked.delete(idx);
+		}
+		this._updateBatchCount();
+	}
+
+	_updateBatchCount() {
+		let count = this.batchChecked.size;
+		let bar = document.getElementById('modal-foot-bar');
+		if (!bar) return;
+		let salvageBtn = bar.querySelector('button[onclick*="batchDoSalvage"]');
+		if (salvageBtn) salvageBtn.textContent = `分解所选(${count})`;
+	}
+
+	batchSelectAll() {
+		let filterSlot = this.currentFilterSlot;
+		this.player.inventory.forEach((gear, i) => {
+			if (filterSlot && gear.slot !== filterSlot) return;
+			let isEquipped = !!this.player.equips[gear.slot] && this.player.equips[gear.slot] === gear;
+			if (!gear.locked && !gear.pinned && !isEquipped) {
+				this.batchChecked.add(i);
+			}
+		});
+		this._renderBackpack();
+	}
+
+	batchSelectByRarity() {
+		let sel = document.getElementById('batch-rarity-sel');
+		if (!sel) return;
+		let targetRarity = parseInt(sel.value);
+		let filterSlot = this.currentFilterSlot;
+		this.player.inventory.forEach((gear, i) => {
+			if (filterSlot && gear.slot !== filterSlot) return;
+			if (gear.rarityIdx !== targetRarity) return;
+			let isEquipped = !!this.player.equips[gear.slot] && this.player.equips[gear.slot] === gear;
+			if (!gear.locked && !gear.pinned && !isEquipped) {
+				this.batchChecked.add(i);
+			}
+		});
+		this._renderBackpack();
+	}
+
+	batchDoSalvage() {
+		let count = this.batchChecked.size;
+		if (count === 0) { alert('没有选中任何装备。'); return; }
+		if (!confirm(`确定分解选中的 ${count} 件装备吗？此操作不可撤销。`)) return;
+
+		let sortedIdxs = Array.from(this.batchChecked).sort((a, b) => b - a);
+		for (let i of sortedIdxs) {
+			let g = this.player.inventory[i];
+			if (g) {
+				this.player.salvageGear(g);
+				this.player.inventory.splice(i, 1);
+			}
+		}
+
+		EBus.emit('ui_bars_update');
+		EBus.emit('log', `♻️ 批量分解了 ${count} 件装备。`, 'sys');
+		this.batchMode = false;
+		this.batchChecked = new Set();
+		this._renderBackpack();
+		document.getElementById('item-details').style.display = 'none';
+	}
+
+	openGearDetail(idxOrSlot, isEquipped) {
         document.getElementById('modal-overlay').style.display = 'flex';
         let gear = isEquipped ? this.player.equips[idxOrSlot] : this.player.inventory[idxOrSlot];
         
@@ -608,31 +710,24 @@ export class UIController {
         document.getElementById('item-details').style.display = 'none';
     }
 
-    batchSalvage() {
-        let salvageCount = 0;
-        let rules = LootFilter.loadRules();
-        let hasAdvancedRules = rules.global.minRarity > -1 || rules.global.requiredAffixes.length > 0 || Object.keys(rules.global.minAffixValues).length > 0 || Object.keys(rules.slots).length > 0;
-        let threshold = parseInt(document.getElementById('ui-salvage').value);
+	batchSalvage() {
+		this.enterBatchMode();
+	}
 
-        for (let i = this.player.inventory.length - 1; i >= 0; i--) {
-            let g = this.player.inventory[i];
-            if (g.locked || g.pinned) continue;
-            let shouldSalvage = hasAdvancedRules ? !LootFilter.shouldKeep(g) : (threshold > -1 && g.rarityIdx <= threshold);
-            if (shouldSalvage) {
-                this.player.salvageGear(g);
-                this.player.inventory.splice(i, 1);
-                salvageCount++;
-            }
-        }
-        
-        if (salvageCount > 0) {
-            EBus.emit('ui_bars_update');
-            EBus.emit('log', `♻️ 批量清理了 ${salvageCount} 件装备。`, 'sys');
-            this._renderBackpack();
-        } else {
-            alert("没有符合条件且未锁定的装备可分解。");
-        }
-    }
+	cycleSortMode() {
+		const order = ['default', 'score_desc', 'score_asc'];
+		let idx = order.indexOf(this.backpackSortMode);
+		this.backpackSortMode = order[(idx + 1) % order.length];
+		Storage.set('backpack_sort_mode', this.backpackSortMode);
+		this._renderBackpack();
+	}
+
+	_updateSortBtnLabel() {
+		let btn = document.getElementById('btn-sort-backpack');
+		if (!btn) return;
+		const labels = { default: '默认顺序', score_desc: '评分 ↓', score_asc: '评分 ↑' };
+		btn.textContent = labels[this.backpackSortMode] || '默认顺序';
+	}
 
     // ==========================================
     // 终焉精炼系统 UI 交互区
