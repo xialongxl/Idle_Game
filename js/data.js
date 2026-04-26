@@ -68,8 +68,8 @@ export const GEAR_RARITY = [
     { name: '终焉', color: 'q8', mult: 22.0 } 
 ];
 
-export const SLOTS = ['weapon', 'head', 'chest', 'legs', 'ring', 'trinket'];
-export const SLOT_NAMES = {weapon:'武器', head:'头盔', chest:'胸甲', legs:'护腿', ring:'戒坠', trinket:'遗物'};
+export const SLOTS = ['weapon', 'head', 'chest', 'legs', 'feet', 'pendant', 'ring', 'trinket'];
+export const SLOT_NAMES = {weapon:'武器', head:'帽子', chest:'上衣', legs:'裤子', feet:'鞋子', pendant:'吊坠', ring:'戒指', trinket:'遗物'};
 export const AFFIXES = [
     { id: 'haste', name: '冷却缩减' },
     { id: 'crit',  name: '暴击率' },
@@ -77,12 +77,14 @@ export const AFFIXES = [
 ];
 
 export const SLOT_BASE_NAMES = {
-    weapon: ['法杖', '魔杖', '咒刃', '魂弓', '法典', '灵刃', '权杖', '秘典'],
-    head: ['法冠', '巫帽', '兜帽', '光环', '灵冠', '面具', '额饰'],
-    chest: ['法袍', '轻甲', '长袍', '皮衣', '圣衫', '布衣', '符文衣'],
-    legs: ['护腿', '法裤', '轻靴', '长裤', '布靴', '灵鞋'],
-    ring: ['魔戒', '指环', '印戒', '暗环', '秘戒'],
-    trinket: ['挂坠', '护符', '圣徽', '魂匣', '宝珠', '颈饰']
+  weapon: ['法杖', '魔杖', '咒刃', '魂弓', '法典', '灵刃', '权杖', '秘典'],
+  head: ['法冠', '巫帽', '兜帽', '光环', '灵冠', '面具', '额饰'],
+  chest: ['法袍', '轻甲', '长袍', '皮衣', '圣衫', '布衣', '符文衣'],
+  legs: ['护腿', '法裤', '长裤', '胫甲', '腿铠'],
+  feet: ['战靴', '法靴', '轻靴', '布靴', '灵鞋', '铁履'],
+  pendant: ['挂坠', '护符', '圣徽', '颈饰', '魂链'],
+  ring: ['魔戒', '指环', '印戒', '暗环', '秘戒'],
+  trinket: ['魂匣', '宝珠', '秘符', '圣器', '核心']
 };
 
 export const ORBS = [

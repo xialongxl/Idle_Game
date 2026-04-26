@@ -3,7 +3,7 @@
 // 负责全面响应引擎的数据驱动 及事件下发
 // ==========================================
 import { SKILLS_DB, GEAR_RARITY, SLOTS, SLOT_NAMES, ORBS, MAX_SAME_ORB, AFFIXES } from './data.js';
-import { EBus, Storage, formatNumber, GearGenerator, LootFilter } from './engine.js';
+import { EBus, Storage, formatNumber, GearGenerator, LootFilter, isAccessory, isArmor, isWeapon } from './engine.js';
 
 export class UIController {
     constructor(player) {
@@ -491,22 +491,22 @@ export class UIController {
                 ${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''} ${gear.pinned ? '📌' : (gear.locked ? '🔒' : '')}
             </span>`;
 
-        let isAccessory = (gear.slot === 'ring' || gear.slot === 'trinket');
-        
-        // 🔒 评分显示重构：总分(含宝珠) 与 装备基础分 独立展示
-        let orbScore = (gear.score || 0) - (gear.baseScore || 0);
-        let statsHtml = `<b>总评分: <span style="color:var(--primary)">${formatNumber(gear.score || 0)}</span>${orbScore > 0 ? ` <span style="color:#a855f7">(+${formatNumber(orbScore)})</span>` : ''}</b><br>`;
-        statsHtml += `装备评分: ${formatNumber(gear.baseScore || 0)}<br>`;
+	let accCheck = isAccessory(gear.slot);
 
-        // 🔒 获取宝珠加成汇总，用于在属性区显示增量
-        let orbBonus = this.player.getGearOrbBonus(gear);
+		// 🔒 评分显示重构：总分(含宝珠) 与 装备基础分 独立展示
+		let orbScore = (gear.score || 0) - (gear.baseScore || 0);
+		let statsHtml = `<b>总评分: <span style="color:var(--primary)">${formatNumber(gear.score || 0)}</span>${orbScore > 0 ? ` <span style="color:#a855f7">(+${formatNumber(orbScore)})</span>` : ''}</b><br>`;
+		statsHtml += `装备评分: ${formatNumber(gear.baseScore || 0)}<br>`;
 
-        // 直观且标准的属性解构陈列 (恢复紧凑排版，不换行)
-        if (gear.slot === 'weapon') {
-            statsHtml += `攻击力: ${formatNumber(Math.floor(gear.stats.atk || 0))}`;
-            if (orbBonus.atk_pct) statsHtml += ` <span style="color:#a855f7">(+${orbBonus.atk_pct}%)</span>`;
-            statsHtml += `<br>`;
-        } else if (isAccessory) {
+		// 🔒 获取宝珠加成汇总，用于在属性区显示增量
+		let orbBonus = this.player.getGearOrbBonus(gear);
+
+		// 直观且标准的属性解构陈列 (恢复紧凑排版，不换行)
+		if (isWeapon(gear.slot)) {
+			statsHtml += `攻击力: ${formatNumber(Math.floor(gear.stats.atk || 0))}`;
+			if (orbBonus.atk_pct) statsHtml += ` <span style="color:#a855f7">(+${orbBonus.atk_pct}%)</span>`;
+			statsHtml += `<br>`;
+		} else if (accCheck) {
             statsHtml += `攻击力: ${formatNumber(Math.floor(gear.stats.atk || 0))}`;
             if (orbBonus.atk_pct) statsHtml += ` <span style="color:#a855f7">(+${orbBonus.atk_pct}%)</span>`;
             statsHtml += ` | 防御力: ${formatNumber(Math.floor(gear.stats.int || 0))}<br>`;
@@ -528,9 +528,12 @@ export class UIController {
         statsHtml += `<div style="margin-top:10px; border-top:1px dashed #444; padding-top:8px;">`;
         statsHtml += `<b style="color:#a855f7">🔮 宝珠孔位 (同类全身最多生效${MAX_SAME_ORB}个)：</b><br>`;
         
-        if (!gear.orbs) gear.orbs = [null, null, null]; // 兼容旧装备
-
-        for (let i = 0; i < 3; i++) {
+	if (!gear.orbs) gear.orbs = [];
+	let orbLen = gear.orbs.length;
+	if (orbLen === 0) {
+		statsHtml += `<span style="color:#555; font-size:11px;">该装备无宝珠孔位</span>`;
+	} else {
+		for (let i = 0; i < orbLen; i++) {
             let oid = gear.orbs[i];
             statsHtml += `<div style="margin-top:4px; display:flex; align-items:center;">孔位${i+1}: `;
             if (oid) {
@@ -550,14 +553,15 @@ export class UIController {
                 if (!hasOrb) {
                     statsHtml += `<span style="color:#555; font-size:10px;">无可用宝珠</span>`;
                 }
-            }
-            statsHtml += `</div>`;
-        }
-        statsHtml += `</div>`;
+	}
+	statsHtml += `</div>`;
+		}
+		}
+		statsHtml += `</div>`;
 
-        document.getElementById('det-stats').innerHTML = statsHtml;
+		document.getElementById('det-stats').innerHTML = statsHtml;
 
-        let actionsDiv = document.getElementById('det-actions');
+	let actionsDiv = document.getElementById('det-actions');
 
         // 🔒 恢复双锁按钮：普通锁(防误卖) 和 防换锁(防替换)
         let lockBtn = `<button onclick="window.ui.toggleLock()" style="border-color:#facc15;color:#facc15">${gear.locked ? '🔓 解锁' : '🔒 锁定'}</button>`;
@@ -900,18 +904,18 @@ export class UIController {
         }
 
         let isEquipped = Object.values(this.player.equips).includes(gear);
-        let isAccessory = (gear.slot === 'ring' || gear.slot === 'trinket');
+	let accCheck = isAccessory(gear.slot);
 
-        let html = `<div id="enhance-name" style="font-size:15px;font-weight:bold;margin-bottom:10px;">`;
-        html += `${isEquipped ? '<span style="color:var(--primary);font-size:11px;">[装备中]</span> ' : ''}`;
-        html += `<span class="${GEAR_RARITY[gear.rarityIdx].color}">${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''}</span></div>`;
+	let html = `<div id="enhance-name" style="font-size:15px;font-weight:bold;margin-bottom:10px;">`;
+	html += `${isEquipped ? '<span style="color:var(--primary);font-size:11px;">[装备中]</span> ' : ''}`;
+	html += `<span class="${GEAR_RARITY[gear.rarityIdx].color}">${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''}</span></div>`;
 
-        html += `<div style="font-size:12px;color:var(--text-mut);margin-bottom:10px;">`;
-        html += `<b>强化等级: <span style="color:var(--accent)">${gear.enhanceLv || 0}</span> / 12</b><br>`;
+	html += `<div style="font-size:12px;color:var(--text-mut);margin-bottom:10px;">`;
+	html += `<b>强化等级: <span style="color:var(--accent)">${gear.enhanceLv || 0}</span> / 12</b><br>`;
 
-        if (gear.slot === 'weapon') {
-            html += `攻击力: ${formatNumber(Math.floor(gear.stats.atk || 0))}<br>`;
-        } else if (isAccessory) {
+	if (isWeapon(gear.slot)) {
+		html += `攻击力: ${formatNumber(Math.floor(gear.stats.atk || 0))}<br>`;
+	} else if (accCheck) {
             html += `攻击力: ${formatNumber(Math.floor(gear.stats.atk || 0))} | 防御力: ${formatNumber(Math.floor(gear.stats.int || 0))}<br>`;
         } else {
             html += `防御力: ${formatNumber(Math.floor(gear.stats.int || 0))}<br>`;

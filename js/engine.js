@@ -45,6 +45,11 @@ export class EventBus {
 }
 export const EBus = new EventBus();
 
+// 装备槽位分类工具函数
+export function isAccessory(slot) { return slot === 'ring' || slot === 'pendant' || slot === 'trinket'; }
+export function isArmor(slot) { return slot === 'head' || slot === 'chest' || slot === 'legs' || slot === 'feet'; }
+export function isWeapon(slot) { return slot === 'weapon'; }
+
 // ==========================================
 // 1.5 进阶拾取过滤器 LootFilter
 // 功能：按部位+品质+词条组合规则精确控制拾取/分解
@@ -81,8 +86,9 @@ export class LootFilter {
             rules.global.minRarity = 8;
         } else if (presetId === 'high_crit_accessory') {
             rules.global.minRarity = 5;
-            rules.slots.ring = { minRarity: 5, requiredAffixes: ['crit'], minAffixValues: { crit: 5 } };
-            rules.slots.trinket = { minRarity: 5, requiredAffixes: ['crit'], minAffixValues: { crit: 5 } };
+	rules.slots.pendant = { minRarity: 5, requiredAffixes: ['crit'], minAffixValues: { crit: 5 } };
+			rules.slots.ring = { minRarity: 5, requiredAffixes: ['crit'], minAffixValues: { crit: 5 } };
+			rules.slots.trinket = { minRarity: 5, requiredAffixes: ['crit'], minAffixValues: { crit: 5 } };
         } else if (presetId === 'mythic_above') {
             rules.global.minRarity = 6;
         }
@@ -156,15 +162,15 @@ export class GearGenerator {
     }
 
     // 🔒 终焉精炼：获取副属性理论上限（按部位与词条类型区分）
-    static getAffixCap(slot, affix) {
-        if (slot === 'weapon') return 40;             // 武器全限定40%
-        if (slot === 'ring' || slot === 'trinket') {  // 首饰区分词条
-            return affix === 'crit' ? 30 : 36;
-        }
-        return 24; // 防具全限定24%
-    }
+	static getAffixCap(slot, affix) {
+		if (isWeapon(slot)) return 40;
+		if (isAccessory(slot)) {
+			return affix === 'crit' ? 30 : 36;
+		}
+	return 24;
+	}
 
-    static getEnhanceCost(gear) {
+	static getEnhanceCost(gear) {
         let baseCost = (gear.rarityIdx + 1) * 300;
         return Math.floor(baseCost * Math.pow(1.8, gear.enhanceLv || 0));
     }
@@ -214,38 +220,38 @@ export class GearGenerator {
         let floorScale = Math.max(1, Math.sqrt(floor) * 10); 
         let bg = floorScale * GEAR_RARITY[rIdx].mult;
 
-        let gear = {
-            id: 'g_' + Date.now() + Math.floor(Math.random() * 1000),
-            name: `${prefix} ${baseName}`, // 前缀+空格+名词
-            slot: slot,
-            rarityIdx: rIdx,
-            stats: {},
-            enhanceLv: 0,
-            orbs: [null, null, null], // 宝珠镶嵌系统：固定3个孔位
-            // 🔒 装备锁定功能：默认未锁定，终焉装备自动锁定(防误卖)
-            locked: rIdx === 8,
-            // 🔒 防替换锁：默认不锁，需玩家手动上锁才能防止被更高评分新装备自动替换
-            pinned: false,
+	let gear = {
+		id: 'g_' + Date.now() + Math.floor(Math.random() * 1000),
+		name: `${prefix} ${baseName}`,
+		slot: slot,
+		rarityIdx: rIdx,
+		stats: {},
+		enhanceLv: 0,
+		orbs: [],
+		locked: rIdx === 8,
+		pinned: false,
             // 🔒 终焉精炼次数记录：按副属性键名存储已精炼次数
             refineLevels: {}
-        };
+	};
 
-        // 严谨的属性槽位分配：武器极致攻击，防具极致防御
-        if (slot === 'weapon') {
-            gear.stats.atk = Math.max(1, Math.floor(bg * 3.0));
-            gear.stats.int = 0; // 武器绝不加防御
-        } else if (slot === 'head' || slot === 'chest' || slot === 'legs') {
-            gear.stats.atk = 0; // 防具绝不加攻击
-            gear.stats.int = Math.max(1, Math.floor(bg * 2.0));
+	let orbSlots = rIdx === 8 ? 3 : rIdx >= 5 ? 2 : rIdx >= 2 ? 1 : 0;
+	gear.orbs = new Array(orbSlots).fill(null);
+
+	if (isWeapon(slot)) {
+		gear.stats.atk = Math.max(1, Math.floor(bg * 3.0));
+		gear.stats.int = 0;
+	} else if (isArmor(slot)) {
+		gear.stats.atk = 0;
+		gear.stats.int = Math.max(1, Math.floor(bg * 2.0));
         } else {
             // 戒坠与遗物：均衡发展，承担提供稀有副属性的重任
             gear.stats.atk = Math.max(1, Math.floor(bg * 0.4));
             gear.stats.int = Math.max(1, Math.floor(bg * 0.4));
         }
 
-        // 词缀数量判定：首饰天生带更多副属性
-        let isAccessory = (slot === 'ring' || slot === 'trinket');
-        let maxAff = isAccessory 
+	// 词缀数量判定：首饰天生带更多副属性
+	let accCheck = isAccessory(slot);
+	let maxAff = accCheck
             ? Math.min(4, Math.max(1, rIdx - 1))  
             : Math.min(2, Math.max(0, rIdx - 2)); 
 
@@ -257,55 +263,55 @@ export class GearGenerator {
             let addVal = 0;
             
             // 副属性词条：固定范围摇摆，彻底斩断楼层无限膨胀影响
-            if (selectedAffix === 'crit') {
-                if (slot === 'weapon') {
-                    addVal = Math.random() * 10 + 5;    // 武器暴击给 5%~15%
-                } else if (isAccessory) {
-                    addVal = Math.random() * 4 + 1;     // 首饰给 1%~5%
-                } else {
-                    addVal = Math.random() * 3 + 1;     // 防具给 1%~4%
-                }
-            } else if (selectedAffix === 'haste') {
-                if (isAccessory) {
-                    addVal = Math.random() * 8 + 3;
-                } else {
-                    addVal = Math.random() * 4 + 1;
-                }
-            } else if (selectedAffix === 'versa') {
-                if (isAccessory) {
-                    addVal = Math.random() * 8 + 3;
-                } else {
-                    addVal = Math.random() * 4 + 1;
-                }
-            }
+	if (selectedAffix === 'crit') {
+			if (isWeapon(slot)) {
+				addVal = Math.random() * 10 + 5;
+			} else if (accCheck) {
+				addVal = Math.random() * 4 + 1;
+			} else {
+				addVal = Math.random() * 3 + 1;
+			}
+		} else if (selectedAffix === 'haste') {
+			if (accCheck) {
+				addVal = Math.random() * 8 + 3;
+			} else {
+				addVal = Math.random() * 4 + 1;
+			}
+		} else if (selectedAffix === 'versa') {
+			if (accCheck) {
+				addVal = Math.random() * 8 + 3;
+			} else {
+				addVal = Math.random() * 4 + 1;
+			}
+		}
 
-            gear.stats[selectedAffix] = (gear.stats[selectedAffix] || 0) + addVal;
-            // 🔒 初始化该副词条的精炼次数为0
-            gear.refineLevels[selectedAffix] = 0;
+		gear.stats[selectedAffix] = (gear.stats[selectedAffix] || 0) + addVal;
+		// 🔒 初始化该副词条的精炼次数为0
+		gear.refineLevels[selectedAffix] = 0;
 
-            // 单件装备上限保护机制 (防止单件装备无敌)
-            if (selectedAffix === 'crit') {
-                if (slot === 'weapon') {
-                    gear.stats.crit = Math.min(50, gear.stats.crit);
-                } else if (isAccessory) {
-                    gear.stats.crit = Math.min(15, gear.stats.crit); 
-                } else {
-                    gear.stats.crit = Math.min(12, gear.stats.crit); 
-                }
-            }
-            if (selectedAffix === 'haste') {
-                gear.stats.haste = Math.min(isAccessory ? 30 : 15, gear.stats.haste);
-            }
-            if (selectedAffix === 'versa') {
-                gear.stats.versa = Math.min(isAccessory ? 40 : 15, gear.stats.versa);
-            }
-        }
+		// 单件装备上限保护机制 (防止单件装备无敌)
+		if (selectedAffix === 'crit') {
+			if (isWeapon(slot)) {
+				gear.stats.crit = Math.min(50, gear.stats.crit);
+			} else if (accCheck) {
+				gear.stats.crit = Math.min(15, gear.stats.crit);
+			} else {
+				gear.stats.crit = Math.min(12, gear.stats.crit);
+			}
+		}
+		if (selectedAffix === 'haste') {
+			gear.stats.haste = Math.min(accCheck ? 30 : 15, gear.stats.haste);
+		}
+		if (selectedAffix === 'versa') {
+			gear.stats.versa = Math.min(accCheck ? 40 : 15, gear.stats.versa);
+		}
+	}
 
-        // 🌟 装备评分权重调整：根据不同部位给予主副属性不同权重
-        if (slot === 'weapon') {
-            gear.baseScore = Math.floor((gear.stats.atk || 0) * 10 + (gear.stats.haste || 0) * 0.5 + (gear.stats.crit || 0) * 0.5 + (gear.stats.versa || 0) * 0.5);
-        } else if (isAccessory) {
-            gear.baseScore = Math.floor((gear.stats.atk || 0) * 5 + (gear.stats.int || 0) * 5 + (gear.stats.haste || 0) * 1 + (gear.stats.crit || 0) * 1 + (gear.stats.versa || 0) * 1);
+	// 装备评分权重调整：根据不同部位给予主副属性不同权重
+	if (isWeapon(slot)) {
+		gear.baseScore = Math.floor((gear.stats.atk || 0) * 10 + (gear.stats.haste || 0) * 0.5 + (gear.stats.crit || 0) * 0.5 + (gear.stats.versa || 0) * 0.5);
+	} else if (accCheck) {
+		gear.baseScore = Math.floor((gear.stats.atk || 0) * 5 + (gear.stats.int || 0) * 5 + (gear.stats.haste || 0) * 1 + (gear.stats.crit || 0) * 1 + (gear.stats.versa || 0) * 1);
         } else {
             gear.baseScore = Math.floor((gear.stats.int || 0) * 10 + (gear.stats.haste || 0) * 0.5 + (gear.stats.crit || 0) * 0.5 + (gear.stats.versa || 0) * 0.5);
         }
@@ -428,11 +434,12 @@ export class Player {
         this.equips = d.equips || {};
         this.inventory = d.inventory || [];
         this.maxFloor = d.maxFloor || 1;
-        this.orbs = d.orbs || {}; // 宝珠背包：按ID统计数量 { orb_hp: 2, orb_atk: 1 }
-        // 🔒 图鉴系统：记录玩家是否获得过各槽位的终焉装备
-        this.finaleCollection = d.finaleCollection || { weapon: false, head: false, chest: false, legs: false, ring: false, trinket: false };
-        // 🔒 终焉精华系统：分解终焉装备产出，用于精炼
-        this.finaleEssence = d.finaleEssence || 0;
+	this.orbs = d.orbs || {};
+		let defaultCollection = {};
+		SLOTS.forEach(s => defaultCollection[s] = false);
+		this.finaleCollection = d.finaleCollection || defaultCollection;
+		SLOTS.forEach(s => { if (this.finaleCollection[s] === undefined) this.finaleCollection[s] = false; });
+		this.finaleEssence = d.finaleEssence || 0;
         
         // 修正：战斗中存读档时必须先初始化空的BUFF和宝珠加成，否则重算属性会报错
         this.buffs = []; 
@@ -445,23 +452,38 @@ export class Player {
             if (g.baseScore === undefined) g.baseScore = g.score || 0; 
             if (g.refineLevels === undefined) g.refineLevels = {}; // 🔒 兼容旧装备缺失精炼字段
         });
-        for (let k in this.equips) { 
-            if (this.equips[k]) {
-                if (this.equips[k].locked === undefined) this.equips[k].locked = false; 
-                if (this.equips[k].pinned === undefined) this.equips[k].pinned = false; 
-                if (this.equips[k].baseScore === undefined) this.equips[k].baseScore = this.equips[k].score || 0; 
-                if (this.equips[k].refineLevels === undefined) this.equips[k].refineLevels = {}; // 🔒 兼容旧装备缺失精炼字段
-            }
-        }
+	for (let k in this.equips) {
+		if (this.equips[k]) {
+			if (this.equips[k].locked === undefined) this.equips[k].locked = false;
+			if (this.equips[k].pinned === undefined) this.equips[k].pinned = false;
+			if (this.equips[k].baseScore === undefined) this.equips[k].baseScore = this.equips[k].score || 0;
+			if (this.equips[k].refineLevels === undefined) this.equips[k].refineLevels = {};
+		}
+	}
+
+	this._migrateGearOrbs();
         
         this.recalcStats();
         
         // 属性结算完毕后才能获取正确的 HP MP 上限
-        this.hp = d.hp || this.getMaxHp();
-        this.mp = d.mp || this.getMaxMp();
-    }
-    
-    save() {
+	this.hp = d.hp || this.getMaxHp();
+		this.mp = d.mp || this.getMaxMp();
+	}
+
+	_migrateGearOrbs() {
+		let allGears = [...Object.values(this.equips).filter(Boolean), ...this.inventory];
+		allGears.forEach(gear => {
+			if (!gear.orbs) gear.orbs = [];
+			let expected = 0;
+			if (gear.rarityIdx === 8) expected = 3;
+			else if (gear.rarityIdx >= 5) expected = 2;
+			else if (gear.rarityIdx >= 2) expected = 1;
+			while (gear.orbs.length < expected) gear.orbs.push(null);
+			if (gear.orbs.length > expected) gear.orbs = gear.orbs.slice(0, expected);
+		});
+	}
+
+	save() {
         Storage.set('player_data', {
             level: this.level, 
             exp: this.exp, 
@@ -489,7 +511,7 @@ export class Player {
             base = Math.floor(150 + 50 * 175 + 50 * 320 + (this.level - 100) * 5400);
         }
         let hpPctBonus = this.orbBonus ? (this.orbBonus.hp_pct || 0) : 0;
-        // 🔒 终焉图鉴加成：集齐6件最大生命值+10%
+	// 终焉图鉴加成：集齐8件最大生命值+10%
         let collectionBonus = Object.values(this.finaleCollection).every(v => v) ? 0.1 : 0;
         return Math.floor(base * (1 + hpPctBonus / 100) * (1 + collectionBonus));
     }
@@ -596,21 +618,19 @@ export class Player {
             if (!gear || !gear.stats) continue;
             if (gear.rarityIdx === 8) hasFinaleEquip = true;
 
-            let slot = gear.slot;
-            let isArmor = (slot === 'head' || slot === 'chest' || slot === 'legs');
-            let isAccessory = (slot === 'ring' || slot === 'trinket');
+	let slot = gear.slot;
 
-            for (let s in gear.stats) {
-                let val = gear.stats[s];
-                if (s === 'crit') {
-                    if (slot === 'weapon') {
-                        weaponCrit += val;
-                    } else if (isArmor) {
-                        armorCrit += val;
-                    } else if (isAccessory) {
-                        accessoryCrit += val;
-                    }
-                } else if (s === 'haste') {
+		for (let s in gear.stats) {
+			let val = gear.stats[s];
+			if (s === 'crit') {
+				if (isWeapon(slot)) {
+					weaponCrit += val;
+				} else if (isArmor(slot)) {
+					armorCrit += val;
+				} else if (isAccessory(slot)) {
+					accessoryCrit += val;
+				}
+			} else if (s === 'haste') {
                     totalHaste += val;
                 } else if (s === 'versa') {
                     totalVersa += val;
@@ -625,7 +645,7 @@ export class Player {
             this.stats.dmg_down_pct += 10;
         }
 
-        // 全局硬件暴击统筹叠加：武器最高50 + 防具最高30 + 戒指最高20 = 合计最高 100
+	// 全局硬件暴击统筹叠加：武器最高50 + 防具最高30 + 首饰最高20 = 合计最高 100
         this.stats.crit += Math.min(50, weaponCrit) + Math.min(30, armorCrit) + Math.min(20, accessoryCrit);
         this.stats.haste += Math.min(80, totalHaste);
         this.stats.versa += Math.min(150, totalVersa);
@@ -710,11 +730,10 @@ export class Player {
         gear.refineLevels[affixKey] = currentLv + 1;
         
         // 🔒 精炼后重算基础评分及总分 (与强化逻辑一致)
-        let s = gear.stats;
-        let isA = (gear.slot === 'ring' || gear.slot === 'trinket');
-        if (gear.slot === 'weapon') gear.baseScore = Math.floor((s.atk||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
-        else if (isA) gear.baseScore = Math.floor((s.atk||0)*5 + (s.int||0)*5 + (s.haste||0)*1 + (s.crit||0)*1 + (s.versa||0)*1);
-        else gear.baseScore = Math.floor((s.int||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
+	let s = gear.stats;
+	if (isWeapon(gear.slot)) gear.baseScore = Math.floor((s.atk||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
+	else if (isAccessory(gear.slot)) gear.baseScore = Math.floor((s.atk||0)*5 + (s.int||0)*5 + (s.haste||0)*1 + (s.crit||0)*1 + (s.versa||0)*1);
+	else gear.baseScore = Math.floor((s.int||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
         
         this.recalcGearScore(gear);
         this.recalcStats();
@@ -740,51 +759,42 @@ export class Player {
 
             let powerMultiplier = 1.05 + (gear.enhanceLv * 0.03);
 
-            if (gear.slot === 'weapon') {
-                gear.stats.atk = Math.floor((gear.stats.atk || 0) * powerMultiplier) + 5;
-            } else if (gear.slot === 'ring' || gear.slot === 'trinket') {
-                gear.stats.atk = Math.floor((gear.stats.atk || 0) * powerMultiplier) + 2;
-                gear.stats.int = Math.floor((gear.stats.int || 0) * powerMultiplier) + 2;
-            } else {
-                gear.stats.int = Math.floor((gear.stats.int || 0) * powerMultiplier) + 5;
-            }
+		if (isWeapon(gear.slot)) {
+			gear.stats.atk = Math.floor((gear.stats.atk || 0) * powerMultiplier) + 5;
+		} else if (isAccessory(gear.slot)) {
+			gear.stats.atk = Math.floor((gear.stats.atk || 0) * powerMultiplier) + 2;
+			gear.stats.int = Math.floor((gear.stats.int || 0) * powerMultiplier) + 2;
+		} else {
+			gear.stats.int = Math.floor((gear.stats.int || 0) * powerMultiplier) + 5;
+		}
 
-            let affPool = ['haste', 'crit', 'versa'];
-            affPool.forEach(aff => {
-                if (gear.stats[aff]) {
-                    gear.stats[aff] += 0.5;
+		let affPool = ['haste', 'crit', 'versa'];
+		affPool.forEach(aff => {
+			if (gear.stats[aff]) {
+				gear.stats[aff] += 0.5;
 
-                    if (aff === 'crit') {
-                        if (gear.slot === 'weapon') {
-                            gear.stats.crit = Math.min(50, gear.stats.crit);
-                        } else if (gear.slot === 'ring' || gear.slot === 'trinket') {
-                            gear.stats.crit = Math.min(15, gear.stats.crit);
-                        } else {
-                            gear.stats.crit = Math.min(12, gear.stats.crit);
-                        }
-                    }
-                    if (aff === 'haste') {
-                        if (gear.slot === 'ring' || gear.slot === 'trinket') {
-                            gear.stats.haste = Math.min(30, gear.stats.haste);
-                        } else {
-                            gear.stats.haste = Math.min(15, gear.stats.haste);
-                        }
-                    }
-                    if (aff === 'versa') {
-                        if (gear.slot === 'ring' || gear.slot === 'trinket') {
-                            gear.stats.versa = Math.min(40, gear.stats.versa);
-                        } else {
-                            gear.stats.versa = Math.min(15, gear.stats.versa);
-                        }
-                    }
-                }
-            });
+				if (aff === 'crit') {
+					if (isWeapon(gear.slot)) {
+						gear.stats.crit = Math.min(50, gear.stats.crit);
+					} else if (isAccessory(gear.slot)) {
+						gear.stats.crit = Math.min(15, gear.stats.crit);
+					} else {
+						gear.stats.crit = Math.min(12, gear.stats.crit);
+					}
+				}
+				if (aff === 'haste') {
+					gear.stats.haste = Math.min(isAccessory(gear.slot) ? 30 : 15, gear.stats.haste);
+				}
+				if (aff === 'versa') {
+					gear.stats.versa = Math.min(isAccessory(gear.slot) ? 40 : 15, gear.stats.versa);
+				}
+			}
+		});
 
-            let s = gear.stats;
-            let isA = (gear.slot === 'ring' || gear.slot === 'trinket');
-            if (gear.slot === 'weapon') gear.baseScore = Math.floor((s.atk||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
-            else if (isA) gear.baseScore = Math.floor((s.atk||0)*5 + (s.int||0)*5 + (s.haste||0)*1 + (s.crit||0)*1 + (s.versa||0)*1);
-            else gear.baseScore = Math.floor((s.int||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
+		let s = gear.stats;
+		if (isWeapon(gear.slot)) gear.baseScore = Math.floor((s.atk||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
+		else if (isAccessory(gear.slot)) gear.baseScore = Math.floor((s.atk||0)*5 + (s.int||0)*5 + (s.haste||0)*1 + (s.crit||0)*1 + (s.versa||0)*1);
+		else gear.baseScore = Math.floor((s.int||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
             this.recalcGearScore(gear);
 
             this.recalcStats();
