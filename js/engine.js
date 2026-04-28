@@ -37,6 +37,12 @@ export class EventBus {
         }
         this.events[event].push(listener);
     }
+    // 取消事件监听，供 Lit 组件 disconnectedCallback 中清理用
+    off(event, listener) {
+        if (this.events[event]) {
+            this.events[event] = this.events[event].filter(fn => fn !== listener);
+        }
+    }
     emit(event, ...args) {
         if (this.events[event]) {
             this.events[event].forEach(fn => fn(...args));
@@ -151,14 +157,21 @@ export class GearGenerator {
         return { score: orb.val * scoreMult };
     }
 
-    // 🔒 终焉精炼：获取指定精炼次数的提升值（递减曲线）
-    static getRefineIncrement(currentRefineLv) {
-        if (currentRefineLv < 3) return 3.0;   // 第1-3次：+3%
-        if (currentRefineLv < 6) return 2.0;   // 第4-6次：+2%
-        if (currentRefineLv < 9) return 1.5;   // 第7-9次：+1.5%
-        if (currentRefineLv < 12) return 1.0;  // 第10-12次：+1%
-        if (currentRefineLv < 15) return 0.5;  // 第13-15次：+0.5%
-        return 0; // 已达上限
+    // 🔒 终焉精炼：线性递减权重曲线（15→1，总和120）
+    static getRefineWeight(currentRefineLv) {
+        return 15 - currentRefineLv;
+    }
+
+    static getRefineTotalWeight() {
+        return 120;
+    }
+
+    // 🔒 终焉精炼：根据初始值与上限动态计算本次提升量（供UI预览/引擎使用）
+    static getRefineIncrementDynamic(initialVal, cap, currentRefineLv) {
+        if (initialVal >= cap || currentRefineLv >= 15) return 0;
+        let totalGap = cap - initialVal;
+        let weight = this.getRefineWeight(currentRefineLv);
+        return totalGap * (weight / this.getRefineTotalWeight());
     }
 
     // 🔒 终焉精炼：获取副属性理论上限（按部位与词条类型区分）
@@ -231,7 +244,8 @@ export class GearGenerator {
 		locked: rIdx === 8,
 		pinned: false,
             // 🔒 终焉精炼次数记录：按副属性键名存储已精炼次数
-            refineLevels: {}
+            refineLevels: {},
+            refineInitialValues: {}
 	};
 
 	let orbSlots = rIdx === 8 ? 3 : rIdx >= 5 ? 2 : rIdx >= 2 ? 1 : 0;
@@ -325,7 +339,14 @@ export class GearGenerator {
 // 功能：告别硬编码 if-else，便于后续扩展新效果
 // ==========================================
 const effectHandlers = {
-    dot: (e, engine) => { engine.mob.buffs.push(e); return '附加[暗系减益] '; },
+    dot: (e, engine) => {
+    e.stateName = e.stateName || 'DoT';
+    e.stateEmoji = e.stateEmoji || '☠️';
+    e.totalDur = e.dur;
+    e.tickTimer = 0;
+    engine.mob.buffs.push(e);
+    return `附加[${e.stateName}] `;
+  },
     vuln: (e, engine) => { engine.mob.buffs.push(e); return '附加[暗系减益] '; },
     buff: (e, engine) => { engine.player.buffs.push(e); engine.player.recalcStats(); return '获得[光能强化] '; },
     heal: (e, engine) => {
@@ -368,11 +389,10 @@ const effectHandlers = {
 		engine.player.recalcStats();
 		return `💀 灵魂献祭！消耗 ${formatNumber(hpCost)} HP，造成 ${formatNumber(dmg)} 伤害 `;
 	},
-	channel_immune: (e, engine) => {
-		engine.player.buffs.push({ type: 'channel_immune', dur: e.dur });
-		engine.mob.buffs.push({ type: 'dot', dur: e.dur, dps: 4.0, tickTimer: 0 });
-		return '☄️ 星辰坠落！进入无敌持续轰击状态！ ';
-	},
+  channel_immune: (e, engine) => {
+    engine.player.buffs.push({ type: 'channel_immune', dur: e.dur });
+    return '☄️ 星辰坠落！进入无敌持续轰击状态！ ';
+  },
 	cond_full_heal: (e, engine) => {
 		engine.player.hp = engine.player.getMaxHp();
 		engine.player.mp = engine.player.getMaxMp();
@@ -450,7 +470,8 @@ export class Player {
             if (g.locked === undefined) g.locked = false; 
             if (g.pinned === undefined) g.pinned = false; 
             if (g.baseScore === undefined) g.baseScore = g.score || 0; 
-            if (g.refineLevels === undefined) g.refineLevels = {}; // 🔒 兼容旧装备缺失精炼字段
+            if (g.refineLevels === undefined) g.refineLevels = {};
+            if (g.refineInitialValues === undefined) g.refineInitialValues = {};
         });
 	for (let k in this.equips) {
 		if (this.equips[k]) {
@@ -458,6 +479,7 @@ export class Player {
 			if (this.equips[k].pinned === undefined) this.equips[k].pinned = false;
 			if (this.equips[k].baseScore === undefined) this.equips[k].baseScore = this.equips[k].score || 0;
 			if (this.equips[k].refineLevels === undefined) this.equips[k].refineLevels = {};
+			if (this.equips[k].refineInitialValues === undefined) this.equips[k].refineInitialValues = {};
 		}
 	}
 
@@ -708,20 +730,45 @@ export class Player {
         return salvageVal;
     }
 
-    // 🔒 终焉精炼：消耗精华提升指定副属性，递减曲线，有次数上限
+    // 🔒 终焉精炼：消耗精华提升指定副属性，智能曲线动态计算提升量
     refineAffix(gear, affixKey) {
         if (!gear.refineLevels) gear.refineLevels = {};
+        if (!gear.refineInitialValues) gear.refineInitialValues = {};
         if (gear.refineLevels[affixKey] === undefined) gear.refineLevels[affixKey] = 0;
         let currentLv = gear.refineLevels[affixKey];
-        // 🔒 每个词条最多精炼15次
         if (currentLv >= 15) return null;
-        // 🔒 精炼消耗：单次固定3个精华
         if (this.finaleEssence < 3) return null;
 
-        let increment = GearGenerator.getRefineIncrement(currentLv);
         let cap = GearGenerator.getAffixCap(gear.slot, affixKey);
         let currentVal = gear.stats[affixKey] || 0;
-        // 🔒 若当前数值+提升值超过上限，则只加到上限
+
+        // 首次精炼时记录该词条初始值，作为动态曲线的计算基准
+        if (gear.refineInitialValues[affixKey] === undefined) {
+            gear.refineInitialValues[affixKey] = currentVal;
+        }
+        let initialVal = gear.refineInitialValues[affixKey];
+
+        // 初始值已到达或超过上限，无法精炼
+        if (initialVal >= cap) return null;
+
+        // 最后一次精炼直接补齐到上限，消除浮点累积误差
+        if (currentLv + 1 >= 15) {
+            let neededToCap = cap - currentVal;
+            if (neededToCap <= 0) return null;
+            this.finaleEssence -= 3;
+            gear.stats[affixKey] = cap;
+            gear.refineLevels[affixKey] = 15;
+            let s = gear.stats;
+            if (isWeapon(gear.slot)) gear.baseScore = Math.floor((s.atk||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
+            else if (isAccessory(gear.slot)) gear.baseScore = Math.floor((s.atk||0)*5 + (s.int||0)*5 + (s.haste||0)*1 + (s.crit||0)*1 + (s.versa||0)*1);
+            else gear.baseScore = Math.floor((s.int||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
+            this.recalcGearScore(gear);
+            this.recalcStats();
+            this.save();
+            return { increment: neededToCap, newLevel: 15 };
+        }
+
+        let increment = GearGenerator.getRefineIncrementDynamic(initialVal, cap, currentLv);
         let actualInc = Math.min(increment, Math.max(0, cap - currentVal));
         if (actualInc <= 0) return null;
 
@@ -729,7 +776,6 @@ export class Player {
         gear.stats[affixKey] = currentVal + actualInc;
         gear.refineLevels[affixKey] = currentLv + 1;
         
-        // 🔒 精炼后重算基础评分及总分 (与强化逻辑一致)
 	let s = gear.stats;
 	if (isWeapon(gear.slot)) gear.baseScore = Math.floor((s.atk||0)*10 + (s.haste||0)*0.5 + (s.crit||0)*0.5 + (s.versa||0)*0.5);
 	else if (isAccessory(gear.slot)) gear.baseScore = Math.floor((s.atk||0)*5 + (s.int||0)*5 + (s.haste||0)*1 + (s.crit||0)*1 + (s.versa||0)*1);
@@ -1095,9 +1141,11 @@ export class CombatEngine {
             return this.die();
         }
 
-        // 处理 Buff 与 AI 袭击
-        this.processEffects(deltaTime);
-        this.processMobAI(deltaTime);
+      // 处理 Buff 与 AI 袭击
+      this.processEffects(deltaTime);
+      this.processMobAI(deltaTime);
+
+      if (this.mob) EBus.emit('ui_monster_update', this.mob);
 
         // 击杀检测
         if (this.mob && this.mob.hp <= 0) {
@@ -1218,19 +1266,24 @@ export class CombatEngine {
 		let dotTickInterval = 1000;
 		let dotEnhance = this.player.buffs.some(b => b.type === 'dot_enhance');
 		if (dotEnhance) dotTickInterval = 500;
-		if (eff.type === 'dot' && eff.tickTimer >= dotTickInterval) {
-			eff.tickTimer -= dotTickInterval;
-			let effectiveDps = dotEnhance ? eff.dps * 2 : eff.dps;
-			let res = this.calcDmg(effectiveDps, vulnMult);
-			this.mob.hp -= res.val;
-			this.log(`☠️ [流血跳跃] 造成 ${formatNumber(res.val)} 点伤害`, 'sys');
-		}
+    if (eff.type === 'dot' && eff.tickTimer >= dotTickInterval) {
+      eff.tickTimer -= dotTickInterval;
+      let effectiveDps = dotEnhance ? eff.dps * 2 : eff.dps;
+      let res = this.calcDmg(effectiveDps, vulnMult);
+      this.mob.hp -= res.val;
+      let dotLogMsg = `${eff.stateEmoji || '☠️'} [${eff.stateName || 'DoT'}] 造成 ${formatNumber(res.val)} 点伤害`;
+      if (eff.stateName === '虹吸') {
+        let healAmt = Math.floor(res.val * 0.3);
+        this.player.hp = Math.min(this.player.getMaxHp(), this.player.hp + healAmt);
+        dotLogMsg += `，汲取 ${formatNumber(healAmt)} 点生命`;
+      }
+      this.log(dotLogMsg, 'sys');
+    }
             
-            if (eff.dur <= 0) {
-                this.mob.buffs.splice(i, 1);
-            }
-        }
-        EBus.emit('ui_monster_update', this.mob);
+    if (eff.dur <= 0) {
+        this.mob.buffs.splice(i, 1);
+      }
+    }
     }
 
     calcDmg(mult, vuln) {

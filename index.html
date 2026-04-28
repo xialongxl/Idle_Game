@@ -24,14 +24,7 @@
             <div class="bar-container"><div class="bar-fill exp-bar" id="ui-exp-fill" style="width: 0%;"></div><div class="bar-text" id="ui-exp-txt">0.0%</div></div>
         </div>
         <div class="panel">
-            <div class="stats-grid">
-                <div class="stat-item"><span>攻击力</span><span id="stat-atk">10</span></div>
-                <div class="stat-item"><span>防御力</span><span id="stat-int">10</span></div>
-                <div class="stat-item"><span>冷却缩减</span><span id="stat-haste">0.0</span></div>
-                <div class="stat-item"><span>暴击率</span><span id="stat-crit">5.0</span></div>
-                <div class="stat-item"><span>共鸣</span><span id="stat-versa">0.0</span></div>
-                <div class="stat-item"><span>GCD</span><span id="stat-gcd">2.50s</span></div>
-            </div>
+            <stats-grid class="stats-grid"></stats-grid>
         </div>
         <div class="panel" style="flex:1;">
             <div class="panel-title">共鸣武装 
@@ -47,7 +40,7 @@
                 <input type="file" id="file-import-save" accept=".json" style="display:none;">
                 <button id="btn-import-save" style="border-color:#4ade80; color:#4ade80; font-size:11px; padding:3px 8px;">📂 导入存档</button>
             </div>
-            <div class="equip-grid" id="ui-equips"></div>
+            <ui-equips class="equip-grid"></ui-equips>
             <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed var(--border); padding-top: 10px;">
                 <div style="display:flex; align-items:center; gap:5px;">
                     <!-- 🔒 终焉精炼按钮：默认隐藏，获得第一件终焉装备后解锁显示 -->
@@ -101,12 +94,12 @@
         <div class="panel monster-area" id="mob-area">
             <div class="monster-name" id="mob-name">虚空聚合体·Lv1</div>
             <div class="bar-container" style="width: 80%;"><div class="bar-fill hp-bar" id="mob-hp-fill" style="width: 100%;"></div><div class="bar-text" id="mob-hp-txt">100/100</div></div>
-            <div class="buff-bar" id="mob-buffs"></div>
+            <mob-buffs class="buff-bar"></mob-buffs>
         </div>
 
-        <div class="log-area" id="combat-log">
+        <combat-log class="log-area">
             <div class="log-item log-sys">系统：雷达已连接。请在营地整顿完毕后点击【探索出发】进入战区。</div>
-        </div>
+        </combat-log>
     </div>
 
     <div class="col-right">
@@ -119,7 +112,7 @@
             <div class="panel-title" style="margin: 10px 15px 0;">执行序列 <div><button id="btn-clear-seq">清空重排</button><button id="btn-export-seq">📤 导出</button><button id="btn-import-seq">📥 导入</button></div></div>
             <input type="file" id="file-import-seq" accept=".txt,.json" style="display:none;">
             <div class="curr-sequence">
-                <ul class="seq-list" id="sequence-list"></ul>
+                <sequence-list class="seq-list"></sequence-list>
             </div>
             <div class="panel-title" style="margin: 10px 15px 0;">技能池</div>
             <div class="skill-pool">

@@ -1,6 +1,12 @@
 import { EBus, Player, CombatEngine, Storage, GearGenerator } from './engine.js';
 import { UIController } from './ui.js';
 import { SLOTS } from './data.js';
+// 🔒 Lit 组件：按需导入以自动注册自定义元素
+import './components/combat-log.js';
+import './components/mob-buffs.js';
+import './components/ui-equips.js';
+import './components/sequence-list.js';
+import './components/stats-grid.js';
 
 class GMTools {
     static levelUp() { 

@@ -26,6 +26,9 @@ export class UIController {
 	// 批量分解模式状态
 	this.batchMode = false;
 	this.batchChecked = new Set();
+	// 背包分页
+	this.backpackPage = 0;
+	this.backpackPageSize = 50;
     }
 
     // 🌟 全局事件统合：所有的界面状态流转都在这里监听渲染
@@ -68,42 +71,24 @@ export class UIController {
         });
 
         EBus.on('ui_stats_update', (p) => {
-            // 大数字简化，攻防数字太变态了
-            document.getElementById('stat-atk').innerText = formatNumber(p.stats.atk);
-            document.getElementById('stat-int').innerText = formatNumber(p.stats.int);
-            document.getElementById('stat-haste').innerText = p.stats.haste.toFixed(1);
-            document.getElementById('stat-crit').innerText = p.stats.crit.toFixed(1);
-            document.getElementById('stat-versa').innerText = p.stats.versa.toFixed(1);
-            
-            // 计算由于急速带来的真实最终公共冷却
-            document.getElementById('stat-gcd').innerText = (2.5 / (1 + p.stats.haste / 100)).toFixed(2) + 's';
+            // 🔒 属性面板渲染已迁移至 stats-grid Lit 组件 (js/components/stats-grid.js)
+            const statsEl = document.querySelector('stats-grid');
+            if (statsEl) {
+                statsEl.atk = p.stats.atk;
+                statsEl.int = p.stats.int;
+                statsEl.haste = p.stats.haste;
+                statsEl.crit = p.stats.crit;
+                statsEl.versa = p.stats.versa;
+            }
         });
 
         EBus.on('ui_equips_update', () => {
-            const container = document.getElementById('ui-equips');
-            container.innerHTML = '';
-            
-            SLOTS.forEach(s => {
-                let eq = this.player.equips[s];
-                // 🌟 核心重构：统一槽位点击行为，无论有无装备，都聚焦该部位！
-                let clickAction = `onclick="window.ui.openSlotView('${s}')"`;
-                if (eq) {
-                    container.innerHTML += `
-                    <div class="equip-slot" ${clickAction} style="cursor:pointer">
-                        <div class="equip-name ${GEAR_RARITY[eq.rarityIdx].color}">${eq.name}</div>
-                        <div class="equip-stats">装备评分: ${formatNumber(eq.score)}</div>
-                        ${eq.enhanceLv > 0 ? `<div class="enhance-tag">+${eq.enhanceLv}</div>` : ''}
-                        ${eq.pinned ? `<div style="position:absolute;top:2px;left:2px;font-size:10px;">📌</div>` : ''}
-                    </div>`;
-                } else {
-                    container.innerHTML += `
-                    <div class="equip-slot" ${clickAction} style="cursor:pointer">
-                        <div class="equip-name" style="color:var(--text-mut)">[点击选取]</div>
-                        <div class="equip-stats">${SLOT_NAMES[s]}</div>
-                    </div>`;
-                }
-            });
-
+            // 🔒 装备栏渲染已迁移至 ui-equips Lit 组件 (js/components/ui-equips.js)
+            const equipEl = document.querySelector('ui-equips');
+            if (equipEl) {
+                equipEl.equips = { ...this.player.equips };
+                equipEl.finaleCollection = { ...this.player.finaleCollection };
+            }
             // 🔒 终焉精炼按钮：获得第一件终焉装备后解锁显示
             let hasFinale = Object.values(this.player.finaleCollection).some(v => v);
             let refineBtn = document.getElementById('btn-refine');
@@ -122,25 +107,10 @@ export class UIController {
             let maxF = formatNumber(m.maxHp);
             document.getElementById('mob-hp-txt').innerText = `${curF}/${maxF}`;
             
-            // 将怪物挂上的 DEBUFF 变成直观图标阵列
-            document.getElementById('mob-buffs').innerHTML = m.buffs
-                .map(b => `<div class="buff-icon" title="${b.type}">${b.type === 'dot' ? '☠️' : '📜'}</div>`)
-                .join('');
+            // 🔒 怪物 Buff 渲染已迁移至 mob-buffs Lit 组件 (js/components/mob-buffs.js)
         });
 
-        // 🔒 战斗日志增量追加：创建 div 追加到容器，超出 200 移除首个
-        EBus.on('log_append', htmlStr => {
-            const logger = document.getElementById('combat-log');
-            let div = document.createElement('div');
-            div.innerHTML = htmlStr;
-            logger.appendChild(div.firstChild);
-            if (logger.children.length > 200) {
-                logger.removeChild(logger.firstChild);
-            }
-            logger.scrollTop = logger.scrollHeight;
-        });
-
-        // 🔒 系统消息限时弹窗：右上角浮动通知，包含关闭按钮和5秒自动消失进度条
+        // 🔒 战斗日志增量追加 — 已迁移至 combat-log Lit 组件 (js/components/combat-log.js)
         EBus.on('sys_message', msg => {
             const container = document.getElementById('toast-container');
             if (!container) return;
@@ -287,6 +257,116 @@ export class UIController {
     // ==========================================
     // 万能背包系统与强化锻造界面业务
     // ==========================================
+
+    // ==========================================
+    // 万能背包系统与强化锻造界面业务
+    // ==========================================
+
+    // 🔒 DOM 虚拟滚动引擎：上垫片 + 可见区 + 下垫片
+    _setupVirtualScroll(container, items, createItem, config = {}) {
+        const { itemHeight = 58, rowGap = 10, bufferRows = 5, columns = 1 } = config;
+
+        container._vsCleanup && container.removeEventListener('scroll', container._vsCleanup);
+        container._vsRange = '';
+        container.innerHTML = '';
+
+        // 确保容器可独立滚动
+        container.style.display = 'block';
+        container.style.overflowY = 'auto';
+        container.style.overflowAnchor = 'none';
+        // 撑满 flex 父级
+        container.style.flex = '1';
+        container.style.minHeight = '0';
+        container._vsFlexReset = true;
+        // 禁止父级抢夺滚动，同时让父级成为 flex 容器使子元素 flex:1 生效
+        const parent = container.parentElement;
+        if (parent) {
+            container._vsParentStyle = parent.style.overflowY;
+            parent.style.overflowY = 'hidden';
+            parent.style.display = 'flex';
+            parent.style.flexDirection = 'column';
+            container._vsParentReset = true;
+        }
+
+        const totalRows = Math.ceil(items.length / columns);
+        const rowH = itemHeight + rowGap;
+
+        const topSpacer = document.createElement('div');
+        const visibleWrap = document.createElement('div');
+        const bottomSpacer = document.createElement('div');
+
+        // 网格模式：visibleWrap 内部用 CSS Grid
+        if (columns > 1) {
+            visibleWrap.style.display = 'grid';
+            visibleWrap.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+            visibleWrap.style.gap = `${rowGap}px`;
+        }
+
+        container.appendChild(topSpacer);
+        container.appendChild(visibleWrap);
+        container.appendChild(bottomSpacer);
+
+        container._vsTop = topSpacer;
+        container._vsWrap = visibleWrap;
+        container._vsBot = bottomSpacer;
+
+        const doRender = () => {
+            const st = container.scrollTop;
+            // display:none→flex 切换时 clientHeight 为 0，用窗口高度*0.6 兜底
+            const ch = container.clientHeight || (window.innerHeight * 0.6);
+            const rh = rowH;
+            const fr = Math.max(0, Math.floor(st / rh) - bufferRows);
+            const lr = Math.min(totalRows - 1, Math.ceil((st + ch) / rh) + bufferRows);
+            const key = `${fr}-${lr}`;
+            if (key === container._vsRange) return;
+            container._vsRange = key;
+
+            topSpacer.style.height = `${fr * rh}px`;
+            bottomSpacer.style.height = `${Math.max(0, totalRows - lr - 1) * rh}px`;
+
+            const frag = document.createDocumentFragment();
+            const firstIdx = fr * columns;
+            const lastIdx = Math.min(items.length - 1, (lr + 1) * columns - 1);
+            for (let i = firstIdx; i <= lastIdx; i++) {
+                const el = createItem(items[i], i);
+                if (el) frag.appendChild(el);
+            }
+            // 快速清空
+            visibleWrap.textContent = '';
+            visibleWrap.appendChild(frag);
+        };
+
+        container._vsCleanup = doRender;
+        container.addEventListener('scroll', doRender, { passive: true });
+        doRender();
+        // display:none→flex 后元素尚未入布局树，一帧后用真实 clientHeight 二次渲染
+        requestAnimationFrame(() => {
+            if (container._vsCleanup === doRender) doRender();
+        });
+    }
+
+    // 🔒 释放虚拟滚动
+    _teardownVirtualScroll(container) {
+        if (container._vsCleanup) {
+            container.removeEventListener('scroll', container._vsCleanup);
+            container._vsCleanup = null;
+        }
+        container.style.overflowY = '';
+        container.style.display = '';
+        container.style.overflowAnchor = '';
+        if (container._vsFlexReset) {
+            container.style.flex = '';
+            container.style.minHeight = '';
+            container._vsFlexReset = false;
+        }
+        if (container._vsParentReset && container.parentElement) {
+            const p = container.parentElement;
+            p.style.display = '';
+            p.style.flexDirection = '';
+            p.style.overflowY = container._vsParentStyle || '';
+            container._vsParentReset = false;
+        }
+    }
     
     // 🔒 移除背包容量限制：不再需要红点提示和满包检查
     updateInvStatus() {
@@ -316,6 +396,7 @@ export class UIController {
 		document.getElementById('modal-overlay').style.display = 'flex';
 
 		let area = document.getElementById('modal-content-area');
+		this._teardownVirtualScroll(area);
 		area.innerHTML = '';
 
 		let filterSlot = this.currentFilterSlot;
@@ -342,34 +423,68 @@ export class UIController {
 		}
 
 		if (items.length === 0) {
-			area.innerHTML += `<div style='color:gray; width:100%; text-align:center; padding:20px;'>${filterSlot ? '没有找到适合该部位的装备' : '行囊空空如也...'}</div>`;
+			area.innerHTML = `<div style='color:gray; width:100%; text-align:center; padding:20px;'>${filterSlot ? '没有找到适合该部位的装备' : '行囊空空如也...'}</div>`;
 		} else {
-			items.forEach(({ gear, i }) => {
-				let isEquipped = !!this.player.equips[gear.slot] && this.player.equips[gear.slot] === gear;
-				let cantCheck = gear.locked || gear.pinned || isEquipped;
-				let cbHtml = '';
-				if (this.batchMode) {
-					if (cantCheck) {
-						cbHtml = `<input type="checkbox" disabled style="margin-right:6px; opacity:0.3;" />`;
-					} else {
-						cbHtml = `<input type="checkbox" class="batch-cb" data-idx="${i}" ${this.batchChecked.has(i) ? 'checked' : ''} onchange="window.ui._toggleBatchCb(${i}, this.checked)" style="margin-right:6px;" />`;
+			// 计算每行列数（匹配 .inv-grid 的 auto-fill, minmax(130px, 1fr)）
+			const areaWidth = area.clientWidth || 500;
+			const columns = Math.max(1, Math.floor(areaWidth / 130));
+
+			const self = this;
+			this._setupVirtualScroll(area, items, (item, _) => {
+				const { gear, i } = item;
+				const div = document.createElement('div');
+				div.className = 'inv-item';
+				div.style.cssText = 'display:flex;align-items:center';
+				const isEquipped = !!self.player.equips[gear.slot] && self.player.equips[gear.slot] === gear;
+				const cantCheck = gear.locked || gear.pinned || isEquipped;
+
+				if (self.batchMode) {
+					if (cantCheck) div.style.opacity = '0.5';
+					div.onclick = null;
+					const cb = document.createElement('input');
+					cb.type = 'checkbox';
+					cb.style.marginRight = '6px';
+					cb.disabled = cantCheck;
+					if (!cantCheck) {
+						cb.className = 'batch-cb';
+						cb.dataset.idx = i;
+						cb.checked = self.batchChecked.has(i);
+						cb.onchange = function() { window.ui._toggleBatchCb(i, this.checked); };
 					}
+					cb.disabled = cantCheck;
+					div.appendChild(cb);
+				} else {
+					div.onclick = function() { window.ui.openGearDetail(i, false); };
 				}
-				area.innerHTML += `
-				<div class="inv-item" onclick="${this.batchMode ? '' : `window.ui.openGearDetail(${i}, false)`}" style="display:flex; align-items:center; ${cantCheck && this.batchMode ? 'opacity:0.5;' : ''}">
-					${cbHtml}
-					<div style="flex:1; cursor:pointer;">
-						<div class="${GEAR_RARITY[gear.rarityIdx].color}" style="font-weight:bold;">
-							${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''} ${gear.pinned ? '📌' : (gear.locked ? '🔒' : '')} ${isEquipped ? '⚔️' : ''}
-						</div>
-						<div style="font-size:11px; margin-top:5px; color:var(--text-mut);">总评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}</div>
-					</div>
-				</div>`;
-			});
+
+				const inner = document.createElement('div');
+				inner.style.cssText = 'flex:1;cursor:pointer';
+				const nameDiv = document.createElement('div');
+				nameDiv.className = GEAR_RARITY[gear.rarityIdx].color;
+				nameDiv.style.fontWeight = 'bold';
+				let label = gear.name;
+				if (gear.enhanceLv > 0) label += '+' + gear.enhanceLv;
+				if (gear.pinned) label += '📌'; else if (gear.locked) label += '🔒';
+				if (isEquipped) label += '⚔️';
+				nameDiv.textContent = label;
+				inner.appendChild(nameDiv);
+
+				const scoreDiv = document.createElement('div');
+				scoreDiv.style.cssText = 'font-size:11px;margin-top:5px;color:var(--text-mut)';
+				scoreDiv.textContent = `总评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}`;
+				inner.appendChild(scoreDiv);
+				div.appendChild(inner);
+				return div;
+			}, { columns, itemHeight: 58, rowGap: 10, bufferRows: 3 });
 		}
 
+		// 「显示全部装备」按钮
 		if (!this.batchMode && filterSlot) {
-			area.innerHTML += `<button onclick="window.ui.openBackpack()" style="width:100%; margin-top:15px; background:transparent; border:1px dashed #666; color:#aaa; cursor:pointer; padding:5px;">↩ 显示全部装备</button>`;
+			const btn = document.createElement('button');
+			btn.onclick = () => window.ui.openBackpack();
+			btn.style.cssText = 'width:100%;margin-top:15px;background:transparent;border:1px dashed #666;color:#aaa;cursor:pointer;padding:5px';
+			btn.textContent = '↩ 显示全部装备';
+			area.insertBefore(btn, area._vsBot || null);
 		}
 
 		this._renderModalFoot();
@@ -550,10 +665,11 @@ export class UIController {
                         statsHtml += `<button onclick="window.ui.embedOrb('${o.id}', ${i})" style="margin-right:3px; font-size:10px; padding:1px 4px; background:#1e1e2e; border:1px solid #a855f7; color:#d8b4fe; cursor:pointer">${o.name}(${count})</button>`;
                     }
                 });
+
                 if (!hasOrb) {
                     statsHtml += `<span style="color:#555; font-size:10px;">无可用宝珠</span>`;
                 }
-	}
+            }
 	statsHtml += `</div>`;
 		}
 		}
@@ -749,10 +865,10 @@ export class UIController {
     // 🔒 渲染左侧终焉装备列表：包含已装备和背包中的
     renderRefineList() {
         let list = document.getElementById('refine-gear-list');
+        this._teardownVirtualScroll(list);
         list.innerHTML = '';
         this.currentRefineList = [];
 
-        // 🔒 排序逻辑：已装备的终焉装备按固定槽位顺序(武器、头盔、胸甲、护腿、戒坠、遗物)顶置
         // 1. 优先收集身上穿戴的终焉装备
         SLOTS.forEach(slot => {
             let g = this.player.equips[slot];
@@ -773,15 +889,30 @@ export class UIController {
             return;
         }
 
-        this.currentRefineList.forEach((gear, idx) => {
-            // 判断是否为身上穿戴的装备
-            let isEquipped = Object.values(this.player.equips).includes(gear);
-            list.innerHTML += `
-            <div class="inv-item" onclick="window.ui.selectRefineGear(${idx})" style="cursor:pointer; border:1px solid var(--q8); ${isEquipped ? 'background:rgba(255,0,85,0.1);' : ''}">
-                <div class="q8" style="font-weight:bold;">${isEquipped ? '[装备中] ' : ''}${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''}</div>
-                <div style="font-size:11px; margin-top:5px; color:var(--text-mut);">评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}</div>
-            </div>`;
-        });
+        // 预计算已装备集合
+        const equippedSet = new Set(Object.values(this.player.equips).filter(Boolean));
+
+        this._setupVirtualScroll(list, this.currentRefineList, (gear, idx) => {
+            const div = document.createElement('div');
+            div.className = 'inv-item';
+            div.style.cssText = `cursor:pointer;border:1px solid var(--q8);${equippedSet.has(gear) ? 'background:rgba(255,0,85,0.1);' : ''}`;
+            div.onclick = function() { window.ui.selectRefineGear(idx); };
+
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'q8';
+            nameDiv.style.fontWeight = 'bold';
+            let label = (equippedSet.has(gear) ? '[装备中] ' : '') + gear.name;
+            if (gear.enhanceLv > 0) label += '+' + gear.enhanceLv;
+            nameDiv.textContent = label;
+            div.appendChild(nameDiv);
+
+            const scoreDiv = document.createElement('div');
+            scoreDiv.style.cssText = 'font-size:11px;margin-top:5px;color:var(--text-mut)';
+            scoreDiv.textContent = `评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}`;
+            div.appendChild(scoreDiv);
+
+            return div;
+        }, { columns: 1, itemHeight: 58, rowGap: 6, bufferRows: 5 });
     }
 
     // 🔒 选中装备，右侧显示词条详情
@@ -804,10 +935,16 @@ export class UIController {
                 let currentVal = gear.stats[affix];
                 let currentRefineLv = gear.refineLevels[affix] || 0;
                 let cap = GearGenerator.getAffixCap(gear.slot, affix);
-                let nextInc = currentRefineLv >= 15 ? 0 : GearGenerator.getRefineIncrement(currentRefineLv);
-                
-                // 预期提升如果超上限，则截断显示
+
+                // 动态计算预期提升量：以已记录的初始值（或当前值）为基准
+                if (!gear.refineInitialValues) gear.refineInitialValues = {};
+                let initialVal = gear.refineInitialValues[affix] !== undefined
+                    ? gear.refineInitialValues[affix]
+                    : currentVal;
+                let nextInc = GearGenerator.getRefineIncrementDynamic(initialVal, cap, currentRefineLv);
                 let actualNextInc = Math.min(nextInc, Math.max(0, cap - currentVal));
+
+                let btnDisabled = currentRefineLv >= 15 || actualNextInc <= 0;
                 
                 html += `
                 <div style="background:var(--bg-dark);padding:10px;border-radius:4px;margin-bottom:8px;border:1px solid var(--border);">
@@ -817,7 +954,7 @@ export class UIController {
                             <span style="margin-left:10px;">当前: ${currentVal.toFixed(1)}%</span>
                             <span style="margin-left:10px;color:var(--text-mut);">上限: ${cap}%</span>
                         </div>
-                        ${currentRefineLv >= 15 || actualNextInc <= 0 ? 
+                        ${btnDisabled ? 
                             `<button disabled style="opacity:0.5;cursor:not-allowed;padding:4px 8px;">已满</button>` : 
                             `<button onclick="window.ui.doRefine('${affix}')" style="background:var(--accent);border-color:var(--accent);cursor:pointer;padding:4px 8px;">精炼 (+${actualNextInc.toFixed(1)}%)</button>`
                         }
@@ -861,6 +998,7 @@ export class UIController {
     renderEnhanceList() {
         this.currentEnhanceList = [];
         let list = document.getElementById('enhance-gear-list');
+        this._teardownVirtualScroll(list);
         list.innerHTML = '';
 
         SLOTS.forEach(slot => {
@@ -879,19 +1017,44 @@ export class UIController {
             return;
         }
 
-        this.currentEnhanceList.forEach((gear, idx) => {
-            let isEquipped = Object.values(this.player.equips).includes(gear);
-            let isSelected = gear === this.currentEnhanceGear;
-            let enhanceTag = gear.enhanceLv > 0 ? `<span style="color:var(--accent)">+${gear.enhanceLv}</span>` : '';
+        // 预计算已装备集合
+        const equippedSet = new Set(Object.values(this.player.equips).filter(Boolean));
+        const self = this;
 
-            list.innerHTML += `
-            <div class="inv-item" onclick="window.ui.selectEnhanceGear(${idx})" style="cursor:pointer; ${isSelected ? 'border-color:var(--accent);background:rgba(255,71,133,0.1);' : ''} ${isEquipped && !isSelected ? 'background:rgba(157,114,255,0.08);' : ''}">
-                <div style="font-weight:bold;" class="${GEAR_RARITY[gear.rarityIdx].color}">
-                    ${isEquipped ? '<span style="color:var(--primary);font-size:10px;">[装]</span> ' : ''}${gear.name} ${enhanceTag}
-                </div>
-                <div style="font-size:11px; margin-top:5px; color:var(--text-mut);">评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}</div>
-            </div>`;
-        });
+        this._setupVirtualScroll(list, this.currentEnhanceList, (gear, idx) => {
+            const div = document.createElement('div');
+            div.className = 'inv-item';
+            div.style.cursor = 'pointer';
+            div.onclick = function() { window.ui.selectEnhanceGear(idx); };
+
+            const isEquipped = equippedSet.has(gear);
+            const isSelected = gear === self.currentEnhanceGear;
+
+            if (isSelected) {
+                div.style.borderColor = 'var(--accent)';
+                div.style.background = 'rgba(255,71,133,0.1)';
+            } else if (isEquipped) {
+                div.style.background = 'rgba(157,114,255,0.08)';
+            }
+
+            const nameDiv = document.createElement('div');
+            nameDiv.style.fontWeight = 'bold';
+            nameDiv.className = GEAR_RARITY[gear.rarityIdx].color;
+            let label = (isEquipped ? '[装] ' : '') + gear.name;
+            if (gear.enhanceLv > 0) {
+                nameDiv.innerHTML = label + ` <span style="color:var(--accent)">+${gear.enhanceLv}</span>`;
+            } else {
+                nameDiv.textContent = label;
+            }
+            div.appendChild(nameDiv);
+
+            const scoreDiv = document.createElement('div');
+            scoreDiv.style.cssText = 'font-size:11px;margin-top:5px;color:var(--text-mut)';
+            scoreDiv.textContent = `评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}`;
+            div.appendChild(scoreDiv);
+
+            return div;
+        }, { columns: 1, itemHeight: 58, rowGap: 6, bufferRows: 5 });
     }
 
     renderEnhanceDetail() {
@@ -1117,15 +1280,15 @@ export class UIController {
 
     initSkillPool() {
         let poolContainer = document.getElementById('ui-skill-pool');
-        poolContainer.innerHTML = '';
         
         let isGMUnlocked = Storage.get('gm_unlock_all', false);
 
+        let html = '';
         SKILLS_DB.forEach(s => {
             // 🔒 被动技能不在技能池显示
             if (s.type === 'passive') return;
             let isLocked = !isGMUnlocked && this.player.level < s.reqLv;
-            poolContainer.innerHTML += `
+            html += `
             <div class="skill-btn cd-mask" id="pool_${s.id}" 
                 onclick="window.ui.addSkillToSequence('${s.id}')" 
                 ${isLocked ? 'style="opacity:0.3;pointer-events:none"' : ''}>
@@ -1137,6 +1300,7 @@ export class UIController {
                 <div class="s-desc">${this.renderDynamicDesc(s)}</div>
             </div>`;
         });
+        poolContainer.innerHTML = html;
     }
 
     initTabs() {
@@ -1175,9 +1339,6 @@ export class UIController {
     }
 
     renderSequence() {
-        let ul = document.getElementById('sequence-list');
-        ul.innerHTML = '';
-        
         // 🟡 修复：渲染序列前过滤掉未解锁技能，防止存档残留
         let isGMUnlocked = Storage.get('gm_unlock_all', false);
         let needsClean = false;
@@ -1200,28 +1361,12 @@ export class UIController {
             EBus.emit('log', '⚠️ 序列中包含未解锁的技能，已被自动临时移除。', 'sys');
         }
 
-        this.currentLoadout.ids.forEach((id, i) => {
-            let sk = SKILLS_DB.find(x => x.id === id);
-            if (!sk) return;
-            
-            let isOpener = this.currentLoadout.openers.includes(id);
-
-            // 🌟 核心文案回归：难懂的机制解释词消失！简简单单最强硬的最原始版本"起手"！
-            ul.innerHTML += `
-            <li class="seq-item" id="seq_dom_${id}">
-                <div>
-                    <b style="color:var(--primary)">${i + 1}.</b> 
-                    ${sk.name} 
-                    ${isOpener ? '<span class="opener-tag">起手</span>' : ''}
-                </div>
-                <div class="seq-actions">
-                    <button onclick="window.ui.toggleOpener('${id}')">设为起手</button>
-                    ${i > 0 ? `<button onclick="window.ui.moveSequence(${i},-1)">↑</button>` : ''}
-                    ${i < this.currentLoadout.ids.length - 1 ? `<button onclick="window.ui.moveSequence(${i},1)">↓</button>` : ''}
-                    <button onclick="window.ui.removeSequence(${i})" style="color:red">X</button>
-                </div>
-            </li>`;
-        });
+        // 🔒 序列列表渲染已迁移至 sequence-list Lit 组件 (js/components/sequence-list.js)
+        const seqEl = document.querySelector('sequence-list');
+        if (seqEl) {
+            seqEl.ids = [...this.currentLoadout.ids];
+            seqEl.openers = [...this.currentLoadout.openers];
+        }
     }
 
     addSkillToSequence(id) {
