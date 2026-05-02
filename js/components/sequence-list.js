@@ -8,13 +8,15 @@ import { SKILLS_DB } from '../data.js';
 export class SequenceList extends LitElement {
     static properties = {
         ids: { type: Array },
-        openers: { type: Array }
+        openers: { type: Array },
+        bossOnlyIds: { type: Array }
     };
 
     constructor() {
         super();
         this.ids = [];
         this.openers = [];
+        this.bossOnlyIds = [];
     }
 
     // 使用 Light DOM，保持 #seq_dom_xxx 的 id 可被 ui_cast_highlight 查询
@@ -28,6 +30,7 @@ export class SequenceList extends LitElement {
                 const sk = SKILLS_DB.find(x => x.id === id);
                 if (!sk) return '';
                 const isOpener = this.openers.includes(id);
+                const isBossOnly = (this.bossOnlyIds || []).includes(id);
                 return html`
                     <li class="seq-item" id="seq_dom_${id}">
                         <div>
@@ -36,6 +39,7 @@ export class SequenceList extends LitElement {
                             ${isOpener ? html`<span class="opener-tag">起手</span>` : ''}
                         </div>
                         <div class="seq-actions">
+                            <button class="boss-only-btn ${isBossOnly ? 'active' : ''}" @click="${() => window.ui.toggleBossOnly(id)}" title="仅在Boss层释放">[B]</button>
                             <button @click="${() => window.ui.toggleOpener(id)}">设为起手</button>
                             ${i > 0 ? html`<button @click="${() => window.ui.moveSequence(i, -1)}">↑</button>` : ''}
                             ${i < this.ids.length - 1 ? html`<button @click="${() => window.ui.moveSequence(i, 1)}">↓</button>` : ''}

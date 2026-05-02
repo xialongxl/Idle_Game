@@ -352,6 +352,9 @@ const effectHandlers = {
     heal: (e, engine) => {
         let healPow = Math.max(engine.player.stats.atk, engine.player.stats.int);
         let v = Math.floor(healPow * e.val);
+        if (engine.player.buffs.some(b => b.type === 'domain' && b.domainType === 'ocean')) {
+            v = Math.floor(v * 1.2);
+        }
         engine.player.hp = Math.min(engine.player.getMaxHp(), engine.player.hp + v);
         return `<span class="log-heal">生命拉回 ${formatNumber(v)}</span> `;
     },
@@ -403,6 +406,16 @@ const effectHandlers = {
 	dot_enhance: (e, engine) => {
 		engine.player.buffs.push({ type: 'dot_enhance', dur: e.dur });
 		return '🌀 虚空化身！持续伤害大幅增强！ ';
+	},
+	domain: (e, engine) => {
+		engine.player.buffs = engine.player.buffs.filter(b => b.type !== 'domain');
+		e.stateName = e.stateName || '领域';
+		e.stateEmoji = e.stateEmoji || '🔮';
+		e.stackCount = 0;
+		e.stackTimer = 0;
+		e.tickTimer = 0;
+		engine.player.buffs.push(e);
+		return `展开[${e.stateName}]领域！`;
 	}
 };
 
@@ -1199,6 +1212,9 @@ export class CombatEngine {
 
             // 计算真实伤害
             let rawDmg = this.mob.atk;
+            if (this.player.buffs.some(b => b.type === 'domain' && b.domainType === 'ocean')) {
+                rawDmg = Math.floor(rawDmg * 0.8);
+            }
             let finalDmg = Math.max(1, Math.floor(rawDmg * (1 - totalDR)));
 
             // 🔴 修复：护盾真实扣除重构，余量正确传递，绝不穿透到血条
@@ -1240,8 +1256,69 @@ export class CombatEngine {
                 if (b.tickTimer >= 1000) {
                     b.tickTimer -= 1000;
                     let healAmt = Math.floor(this.player.getMaxHp() * (b.pct || 0));
+                    if (this.player.buffs.some(pb => pb.type === 'domain' && pb.domainType === 'ocean')) {
+                        healAmt = Math.floor(healAmt * 1.2);
+                    }
                     this.player.hp = Math.min(this.player.getMaxHp(), this.player.hp + healAmt);
                     this.log(`💚 [持续恢复] 回复 ${formatNumber(healAmt)} 点生命`, 'heal');
+                }
+            }
+
+            // 领域技持续伤害
+            if (b.type === 'domain') {
+                if (b.domainType === 'flame') {
+                    b.stackTimer = (b.stackTimer || 0) + deltaTime;
+                    if (b.stackTimer >= 2000 && (b.stackCount || 0) < 10) {
+                        b.stackCount = (b.stackCount || 0) + 1;
+                        b.stackTimer -= 2000;
+                    }
+                }
+
+                b.tickTimer = (b.tickTimer || 0) + deltaTime;
+                if (b.tickTimer >= 1000) {
+                    b.tickTimer -= 1000;
+                    let effectiveDps = b.dps;
+
+                    if (b.domainType === 'void') {
+                        let hpPct = (this.mob.hp / this.mob.maxHp) * 100;
+                        if (hpPct <= 30)      effectiveDps *= 2.0;
+                        else if (hpPct <= 50) effectiveDps *= 1.5;
+                    }
+
+                    if (b.domainType === 'flame') {
+                        effectiveDps *= (1 + 0.1 * (b.stackCount || 0));
+                    }
+
+                    if (b.domainType === 'death') {
+                        let negCount = 0;
+                        this.mob.buffs.forEach(mb => {
+                            if (mb.type === 'dot' || mb.type === 'vuln' || mb.type === 'debuff') {
+                                negCount++;
+                            }
+                        });
+                        effectiveDps *= (1 + 0.15 * negCount);
+                    }
+
+                    let vulnMult = 1.0;
+                    this.mob.buffs.forEach(mb => { if (mb.type === 'vuln') vulnMult *= mb.val; });
+
+                    let res = this.calcDmg(effectiveDps, vulnMult);
+                    this.mob.hp -= res.val;
+                    let dotLogMsg = `${b.stateEmoji} [${b.stateName}] 造成 ${formatNumber(res.val)} 点伤害`;
+                    if (res.isCrit) dotLogMsg += ' (暴击!)';
+
+                    if (b.domainType === 'holy') {
+                        let hpPct = (this.player.hp / this.player.getMaxHp()) * 100;
+                        let lifestealRate = hpPct < 50 ? 0.10 : 0.05;
+                        let healAmt = Math.floor(res.val * lifestealRate);
+                        if (this.player.buffs.some(pb => pb.type === 'domain' && pb.domainType === 'ocean')) {
+                            healAmt = Math.floor(healAmt * 1.2);
+                        }
+                        this.player.hp = Math.min(this.player.getMaxHp(), this.player.hp + healAmt);
+                        dotLogMsg += `，回复 ${formatNumber(healAmt)} 点生命`;
+                    }
+
+                    this.log(dotLogMsg, 'sys');
                 }
             }
 
@@ -1274,6 +1351,9 @@ export class CombatEngine {
       let dotLogMsg = `${eff.stateEmoji || '☠️'} [${eff.stateName || 'DoT'}] 造成 ${formatNumber(res.val)} 点伤害`;
       if (eff.stateName === '虹吸') {
         let healAmt = Math.floor(res.val * 0.3);
+        if (this.player.buffs.some(b => b.type === 'domain' && b.domainType === 'ocean')) {
+          healAmt = Math.floor(healAmt * 1.2);
+        }
         this.player.hp = Math.min(this.player.getMaxHp(), this.player.hp + healAmt);
         dotLogMsg += `，汲取 ${formatNumber(healAmt)} 点生命`;
       }
@@ -1301,6 +1381,12 @@ export class CombatEngine {
         return { val: Math.max(1, Math.floor(dmg)), isCrit: isC };
     }
 
+    // Boss专用标记：判断技能是否应在当前层被跳过
+    _isBossOnlySkip(skillId) {
+        let bossOnlyIds = this.sequence.bossOnlyIds || [];
+        return bossOnlyIds.includes(skillId) && this.floor % 10 !== 0;
+    }
+
     // ====== 最强防假执行意图判定 (心血结晶，绝无乱插队) ======
 	attemptExecution() {
 		// 蓄力状态检测：蓄力期间不可施放任何技能
@@ -1316,9 +1402,11 @@ export class CombatEngine {
         }
 
         // 🛡️ 优先级 0：oGCD 独立能力技，它不占用 GCD，它是神！随时可以无视顺序瞬间穿插！
+        // Boss专用技能的oGCD在非Boss层会被跳过
         let oGcds = this.sequence.ids
             .map(id => this.skills.find(s => s.id === id))
-            .filter(s => s && s.type === 'ogcd' && s.isReady(this.player.mp));
+            .filter(s => s && s.type === 'ogcd' && s.isReady(this.player.mp)
+                && !this._isBossOnlySkip(s.id));
             
         if (oGcds.length > 0) {
             oGcds.sort((a, b) => b.priority - a.priority);
@@ -1335,9 +1423,11 @@ export class CombatEngine {
             if (this.sequence.openers.length === 0) {
                 this.openerPhase = false; 
             } else {
+                // Boss专用技能的起手技在非Boss层会被跳过
                 let readyOps = this.sequence.openers
                     .map(id => this.skills.find(s => s.id === id))
-                    .filter(s => s && s.isReady(this.player.mp));
+                    .filter(s => s && s.isReady(this.player.mp)
+                        && !this._isBossOnlySkip(s.id));
 
                 if (readyOps.length > 0) {
                     readyOps.sort((a, b) => b.priority - a.priority);
@@ -1367,10 +1457,13 @@ export class CombatEngine {
             let sk = this.skills.find(s => s.id === this.sequence.ids[this.seqIdx]);
             
             // 🔴 核心修复：debuff 类型同样受 GCD 约束，加入类型放行判定
+            // Boss专用标记：非Boss层时跳过该技能，继续尝试下一个
             if (sk && sk.type !== 'ogcd' && sk.type !== 'passive' && sk.isReady(this.player.mp)) {
-                this.executeSkill(sk);
-                this.seqIdx = (this.seqIdx + 1) % maxLen; // 指针移动到下一个，完工
-                return;
+                if (!this._isBossOnlySkip(sk.id)) {
+                    this.executeSkill(sk);
+                    this.seqIdx = (this.seqIdx + 1) % maxLen; // 指针移动到下一个，完工
+                    return;
+                }
             }
             
             // 轮到这个技能了，但是它CD在转，或者没有蓝？直接无视它，指针挪到下一个看能不能用！

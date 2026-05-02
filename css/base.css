@@ -79,6 +79,11 @@ button:active { transform: scale(0.95); }
 .seq-item.active-cast { border-color: var(--primary); box-shadow: 0 0 5px var(--primary); }
 .seq-actions button { padding: 2px 5px; font-size: 11px; }
 .opener-tag { font-size: 10px; background: var(--accent); padding: 2px 4px; border-radius: 3px; margin-left: 5px; }
+/* Boss专用标记按钮 */
+.boss-only-btn { background: transparent; border: 1px solid #555; color: #555; cursor: pointer; font-size: 11px; padding: 1px 5px; border-radius: 3px; transition: all 0.15s; }
+.boss-only-btn.active { background: #f59e0b; border-color: #f59e0b; color: #000; font-weight: bold; }
+.boss-only-btn:hover { border-color: #f59e0b; color: #f59e0b; }
+.boss-only-btn.active:hover { background: #d97706; border-color: #d97706; color: #000; }
 
 .inv-item { background: var(--bg-dark); border: 1px solid var(--border); border-radius: 4px; padding: 10px; text-align: center; cursor: pointer; content-visibility: auto; contain-intrinsic-size: auto 60px; }
 .inv-item:hover { border-color: #fff; }

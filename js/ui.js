@@ -178,6 +178,7 @@ export class UIController {
         document.getElementById('btn-clear-seq').addEventListener('click', () => {
             this.currentLoadout.ids = [];
             this.currentLoadout.openers = [];
+            this.currentLoadout.bossOnlyIds = [];
             this.renderSequence();
             this.saveSequence();
         });
@@ -1331,9 +1332,13 @@ export class UIController {
 			allLoadouts[tab].openers = migArr(allLoadouts[tab].openers);
 		}
 		if (!allLoadouts[this.currentTab]) {
-			allLoadouts[this.currentTab] = { ids: ['s01'], openers: [] };
+			allLoadouts[this.currentTab] = { ids: ['s01'], openers: [], bossOnlyIds: [] };
 		}
 		this.currentLoadout = allLoadouts[this.currentTab];
+        // 旧存档兼容：无bossOnlyIds字段时初始化为空数组
+        if (!this.currentLoadout.bossOnlyIds) {
+            this.currentLoadout.bossOnlyIds = [];
+        }
         this.renderSequence();
         this.saveSequence();
     }
@@ -1355,6 +1360,8 @@ export class UIController {
         });
 
         this.currentLoadout.openers = this.currentLoadout.openers.filter(id => this.currentLoadout.ids.includes(id));
+        // 过滤bossOnlyIds中已不在序列里的技能
+        this.currentLoadout.bossOnlyIds = (this.currentLoadout.bossOnlyIds || []).filter(id => this.currentLoadout.ids.includes(id));
 
         if (needsClean) {
             this.saveSequence();
@@ -1366,6 +1373,7 @@ export class UIController {
         if (seqEl) {
             seqEl.ids = [...this.currentLoadout.ids];
             seqEl.openers = [...this.currentLoadout.openers];
+            seqEl.bossOnlyIds = [...(this.currentLoadout.bossOnlyIds || [])];
         }
     }
 
@@ -1386,6 +1394,7 @@ export class UIController {
         let idToRemove = this.currentLoadout.ids[index];
         this.currentLoadout.ids.splice(index, 1);
         this.currentLoadout.openers = this.currentLoadout.openers.filter(x => x !== idToRemove);
+        this.currentLoadout.bossOnlyIds = (this.currentLoadout.bossOnlyIds || []).filter(x => x !== idToRemove);
         this.renderSequence();
         this.saveSequence();
     }
@@ -1404,6 +1413,21 @@ export class UIController {
             this.currentLoadout.openers.splice(idx, 1);
         } else {
             this.currentLoadout.openers.push(id);
+        }
+        this.renderSequence();
+        this.saveSequence();
+    }
+
+    // Boss专用标记：切换技能是否仅在Boss层释放
+    toggleBossOnly(id) {
+        if (!this.currentLoadout.bossOnlyIds) {
+            this.currentLoadout.bossOnlyIds = [];
+        }
+        let idx = this.currentLoadout.bossOnlyIds.indexOf(id);
+        if (idx > -1) {
+            this.currentLoadout.bossOnlyIds.splice(idx, 1);
+        } else {
+            this.currentLoadout.bossOnlyIds.push(id);
         }
         this.renderSequence();
         this.saveSequence();
@@ -1437,19 +1461,23 @@ export class UIController {
         let lines = [];
 
         // 🔒 起手技能：每行以 @ 开头，按 openers 数组顺序输出
+        // Boss专用技能名前加 ! 前缀
         openers.forEach(id => {
             let sk = SKILLS_DB.find(s => s.id === id);
             if (sk) {
-                lines.push('@ ' + sk.name);
+                let isBossOnly = (this.currentLoadout.bossOnlyIds || []).includes(id);
+                lines.push(isBossOnly ? '@! ' + sk.name : '@ ' + sk.name);
             }
         });
 
         // 🔒 常规序列：每行一个技能名，排除已在起手部分输出的技能
+        // Boss专用技能名前加 ! 前缀
         ids.forEach(id => {
             if (openers.includes(id)) return; // 起手技能已在上部分输出，跳过
             let sk = SKILLS_DB.find(s => s.id === id);
             if (sk) {
-                lines.push(sk.name);
+                let isBossOnly = (this.currentLoadout.bossOnlyIds || []).includes(id);
+                lines.push(isBossOnly ? '! ' + sk.name : sk.name);
             }
         });
 
@@ -1476,11 +1504,13 @@ export class UIController {
         window.engine.log(`📤 当前序列已导出为文件。（共 ${ids.length} 个技能，${openers.length} 个起手）`, 'sys');
     }
 
-    // 🔒 解析导入文本，返回 { ids: [], openers: [] }
-    // 规则：空行忽略、# 注释忽略、@ 开头为起手技能（同时加入ids）、其他为常规序列
+    // 🔒 解析导入文本，返回 { ids: [], openers: [], bossOnlyIds: [] }
+    // 规则：空行忽略、# 注释忽略、@ 开头为起手技能（同时加入ids）、! 开头为Boss专用
+    // 支持组合前缀：!@技能名 或 @!技能名
     parseSequenceText(text) {
         let ids = [];
         let openers = [];
+        let bossOnlyIds = [];
         let lines = text.split('\n');
 
         lines.forEach(line => {
@@ -1491,17 +1521,21 @@ export class UIController {
             // 🔒 以 # 开头的行视为注释，忽略
             if (trimmed.startsWith('#')) return;
 
-            // 🔒 判断是否为起手技能
+            // 🔒 循环提取前缀标记：@ 为起手，! 为Boss专用
             let isOpener = false;
-            let skillName = '';
-
-            if (trimmed.startsWith('@')) {
-                isOpener = true;
-                // 🔒 去掉@，再trim一次，兼容"@ 技能名"和"@技能名"
-                skillName = trimmed.substring(1).trim();
-            } else {
-                skillName = trimmed;
+            let isBossOnly = false;
+            let remaining = trimmed;
+            while (remaining && (remaining.startsWith('!') || remaining.startsWith('@'))) {
+                if (remaining.startsWith('!')) {
+                    isBossOnly = true;
+                    remaining = remaining.substring(1);
+                }
+                if (remaining.startsWith('@')) {
+                    isOpener = true;
+                    remaining = remaining.substring(1);
+                }
             }
+            let skillName = remaining.trim();
 
             if (!skillName) return;
 
@@ -1530,9 +1564,13 @@ export class UIController {
             } else {
                 ids.push(skillId);
             }
+            // Boss专用标记
+            if (isBossOnly) {
+                bossOnlyIds.push(skillId);
+            }
         });
 
-        return { ids, openers };
+        return { ids, openers, bossOnlyIds };
     }
 
     // 🔒 执行导入技能序列：解析 → 等级校验 → 去重 → 数量限制 → 保底 → 覆盖保存
@@ -1541,6 +1579,7 @@ export class UIController {
         let parsed = this.parseSequenceText(text);
         let ids = parsed.ids;
         let openers = parsed.openers;
+        let bossOnlyIds = parsed.bossOnlyIds || [];
 
         // 🔒 检查是否有有效技能
         if (ids.length === 0 && openers.length === 0) {
@@ -1623,17 +1662,20 @@ export class UIController {
 
         // 🔒 过滤openers：确保openers中的技能都在ids中（系统约束）
         dedupedOpeners = dedupedOpeners.filter(id => dedupedIds.includes(id));
+        // Boss专用标记：过滤掉不在最终ids中的技能
+        bossOnlyIds = bossOnlyIds.filter(id => dedupedIds.includes(id));
 
         // 🔒 覆盖当前序列
         this.currentLoadout.ids = dedupedIds;
         this.currentLoadout.openers = dedupedOpeners;
+        this.currentLoadout.bossOnlyIds = bossOnlyIds;
 
         // 🔒 保存并刷新UI
         this.saveSequence();
         this.renderSequence();
 
         // 🔒 输出汇总日志
-        window.engine.log(`📥 导入完成。常规技能: ${dedupedIds.length}，起手: ${dedupedOpeners.length}。`, 'sys');
+        window.engine.log(`📥 导入完成。常规技能: ${dedupedIds.length}，起手: ${dedupedOpeners.length}，Boss专用: ${bossOnlyIds.length}。`, 'sys');
     }
 
     openLootFilter() {

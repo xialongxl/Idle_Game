@@ -30,7 +30,7 @@
     { id: 's22', name: '奥术飞弹', reqLv: 50, type: 'gcd', cd: 5000, cost: 12, dmgMult: 2.5, priority: 6, desc:'[GCD] 造成{dmgMult}%攻击力伤害（约{dmg}），消耗{cost}法力，冷却{cd}秒。' },
     
     { id: 's23', name: '能量灌注', reqLv: 51, type: 'buff', cd: 60000, cost: 0, dmgMult: 0, effects:[{type:'buff', stat:'haste', val:30, dur:15000}], priority: 15, desc:'[Buff] 冷却缩减提升30%，持续{dur}秒，无消耗，冷却{cd}秒。' },
-    { id: 's24', name: '神圣领域', reqLv: 55, type: 'gcd', cd: 40000, cost: 50, dmgMult: 0, effects:[{type:'heal', val:20}], priority: 12, desc:'[治疗] 恢复{healMult}%攻击力的生命值（约{heal}），消耗{cost}法力，冷却{cd}秒。' },
+    { id: 's24', name: '神圣庇护', reqLv: 55, type: 'gcd', cd: 40000, cost: 50, dmgMult: 0, effects:[{type:'heal', val:20}], priority: 12, desc:'[治疗] 恢复{healMult}%攻击力的生命值（约{heal}），消耗{cost}法力，冷却{cd}秒。' },
     { id: 's25', name: '混沌箭', reqLv: 58, type: 'gcd', cd: 18000, cost: 30, dmgMult: 6.5, priority: 7, desc:'[GCD] 造成{dmgMult}%攻击力伤害（约{dmg}），消耗{cost}法力，冷却{cd}秒。' },
     { id: 's26', name: '暗影裂隙', reqLv: 60, type: 'ogcd', cd: 25000, cost: 20, dmgMult: 4.5, priority: 11, desc:'[oGCD] 造成{dmgMult}%攻击力伤害（约{dmg}），消耗{cost}法力，冷却{cd}秒。' },
     { id: 's27', name: '寒冰长矛', reqLv: 62, type: 'gcd', cd: 3000, cost: 10, dmgMult: 1.8, priority: 4, desc:'[GCD] 造成{dmgMult}%攻击力伤害（约{dmg}），消耗{cost}法力，冷却{cd}秒。' },
@@ -54,7 +54,13 @@
   { id: 's44', name: '法则解构', reqLv: 95, type: 'debuff', cd: 120000, cost: 50, dmgMult: 0, effects:[{type:'vuln', val:1.5, dur:15000}], priority: 17, desc:'[终焉][Debuff] 使目标受到的伤害提高50%，持续{dur}秒，消耗{cost}法力，冷却{cd}秒。' },
   { id: 's45', name: '命运轮转', reqLv: 96, type: 'ogcd', cd: 180000, cost: 0, dmgMult: 0, conditionMaxHPPct:30, effects:[{type:'cond_full_heal'},{type:'buff',stat:'dmg_up_pct',val:50,dur:15000}], priority: 20, desc:'[终焉][oGCD] 绝境中逆转命运，瞬间恢复全部状态并大幅强化。冷却{cd}秒。' },
   { id: 's46', name: '无限魔阵', reqLv: 99, type: 'buff', cd: 150000, cost: 0, dmgMult: 0, effects:[{type:'buff', stat:'versa', val:50, dur:20000}, {type:'mp_recover_pct', val:1.0}], priority: 18, desc:'[终焉][Buff] 提升共鸣50%，持续{dur}秒，并完全恢复法力值，无消耗，冷却{cd}秒。' },
-  { id: 's47', name: '阿赖耶识·斩', reqLv: 100, type: 'ogcd', cd: 180000, cost: 150, dmgMult: 25.0, priority: 20, desc:'[终焉][oGCD] 造成{dmgMult}%攻击力伤害（约{dmg}），消耗{cost}法力，冷却{cd}秒。' },
+   { id: 's47', name: '阿赖耶识·斩', reqLv: 100, type: 'ogcd', cd: 180000, cost: 150, dmgMult: 25.0, priority: 20, desc:'[终焉][oGCD] 造成{dmgMult}%攻击力伤害（约{dmg}），消耗{cost}法力，冷却{cd}秒。' },
+
+   { id: 's48', name: '虚空领域', reqLv: 100, type: 'domain', cd: 300000, cost: 300, dmgMult: 0, effects:[{type:'domain', dur:60000, dps:5.0, domainType:'void', stateName:'虚空领域', stateEmoji:'🌌'}], priority: 18, desc:'[终焉][领域] 展开虚空领域，每秒造成500%伤害。对生命低于50%的敌人伤害提高50%，低于30%时提高100%。消耗{cost}法力，冷却{cd}秒。' },
+   { id: 's49', name: '海洋领域', reqLv: 100, type: 'domain', cd: 300000, cost: 300, dmgMult: 0, effects:[{type:'domain', dur:60000, dps:5.0, domainType:'ocean', stateName:'海洋领域', stateEmoji:'🌊'}], priority: 18, desc:'[终焉][领域] 展开海洋领域，每秒造成500%伤害。敌人伤害降低20%，玩家受疗效果提高20%。消耗{cost}法力，冷却{cd}秒。' },
+   { id: 's50', name: '烈焰领域', reqLv: 100, type: 'domain', cd: 300000, cost: 300, dmgMult: 0, effects:[{type:'domain', dur:60000, dps:5.0, domainType:'flame', stateName:'烈焰领域', stateEmoji:'🔥'}], priority: 18, desc:'[终焉][领域] 展开烈焰领域，每秒造成500%伤害。伤害每2秒递增10%，最多叠加10次。消耗{cost}法力，冷却{cd}秒。' },
+   { id: 's51', name: '死亡领域', reqLv: 100, type: 'domain', cd: 300000, cost: 300, dmgMult: 0, effects:[{type:'domain', dur:60000, dps:5.0, domainType:'death', stateName:'死亡领域', stateEmoji:'💀'}], priority: 18, desc:'[终焉][领域] 展开死亡领域，每秒造成500%伤害。敌人身上每个负面效果使伤害提高15%。消耗{cost}法力，冷却{cd}秒。' },
+   { id: 's52', name: '圣光领域', reqLv: 100, type: 'domain', cd: 300000, cost: 300, dmgMult: 0, effects:[{type:'domain', dur:60000, dps:5.0, domainType:'holy', stateName:'圣光领域', stateEmoji:'✨'}], priority: 18, desc:'[终焉][领域] 展开圣光领域，每秒造成500%伤害。伤害的5%转化为生命回复，生命低于50%时转化比例翻倍。消耗{cost}法力，冷却{cd}秒。' },
 
     { id: 's_passive_01', name: '终焉之力', reqLv: 1, type: 'passive', cd: 0, cost: 0, dmgMult: 0, priority: 0, desc:'[被动] 造成伤害提高10%，受到伤害降低10%。' }
 ];
