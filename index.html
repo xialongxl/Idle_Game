@@ -124,23 +124,21 @@
 
 <div id="modal-overlay">
     <div class="modal">
-        <div class="panel-title" style="padding: 15px 15px 0; margin:0; display:flex; justify-content:space-between; align-items:center;">
-      <span id="modal-title">物资与强化面板</span>
-      <button id="btn-sort-backpack" onclick="window.ui.cycleSortMode()" style="font-size:12px; padding:2px 8px; border:1px solid var(--border); background:transparent; color:var(--text-mut); cursor:pointer; white-space:nowrap;">默认顺序</button>
-    </div>
-        <div class="modal-body">
-            <div id="modal-content-area" class="inv-grid"></div>
-            <div id="item-details" class="details-box">
-                <div id="det-name" style="font-size:15px; font-weight:bold; margin-bottom:5px;"></div>
-                <div id="det-stats" style="font-size:12px; color:var(--text-mut); margin-bottom:10px;"></div>
-                <div style="display:flex; gap:10px;" id="det-actions"></div>
-            </div>
+        <div class="terminal-header">
+            <span id="modal-title">🎒 星盘背包</span>
+            <button id="btn-sort-backpack" class="btn" onclick="window.ui.cycleSortMode()">默认顺序</button>
         </div>
-    <div class="modal-foot" id="modal-foot-bar">
-      <button onclick="window.ui.enterBatchMode()" id="btn-batch-mode" style="margin-right:10px; border-color:#f59e0b; color:#f59e0b;">批量分解</button>
-      <button onclick="window.ui.openEnhanceView()" style="margin-right:10px; border-color:var(--accent); color:var(--accent);">⚒️ 强化锻造</button>
-      <button onclick="document.getElementById('modal-overlay').style.display='none'">关闭终端</button>
-    </div>
+        <div id="modal-content-area" class="scroll-area"></div>
+        <div id="item-details" class="detail-panel" style="display:none">
+            <div id="det-name" style="font-size:18px; font-weight:bold;"></div>
+            <div id="det-stats"></div>
+            <div class="action-buttons" id="det-actions"></div>
+        </div>
+        <div class="terminal-footer" id="modal-foot-bar">
+            <button class="btn btn-gold" onclick="window.ui.enterBatchMode()" id="btn-batch-mode">批量分解</button>
+            <button class="btn btn-red" onclick="window.ui.openEnhanceView()">⚒️ 强化锻造</button>
+            <button class="btn" onclick="document.getElementById('modal-overlay').style.display='none'" style="margin-left:auto">关闭终端</button>
+        </div>
     </div>
 </div>
 

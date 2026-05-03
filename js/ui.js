@@ -424,27 +424,23 @@ export class UIController {
 		}
 
 		if (items.length === 0) {
-			area.innerHTML = `<div style='color:gray; width:100%; text-align:center; padding:20px;'>${filterSlot ? '没有找到适合该部位的装备' : '行囊空空如也...'}</div>`;
+			area.innerHTML = `<div style='color:gray; width:100%; text-align:center; padding:20px; grid-column:1/-1;'>${filterSlot ? '没有找到适合该部位的装备' : '行囊空空如也...'}</div>`;
 		} else {
-			// 计算每行列数（匹配 .inv-grid 的 auto-fill, minmax(130px, 1fr)）
-			const areaWidth = area.clientWidth || 500;
-			const columns = Math.max(1, Math.floor(areaWidth / 130));
-
 			const self = this;
 			this._setupVirtualScroll(area, items, (item, _) => {
 				const { gear, i } = item;
 				const div = document.createElement('div');
-				div.className = 'inv-item';
-				div.style.cssText = 'display:flex;align-items:center';
+				div.className = 'eq-card';
 				const isEquipped = !!self.player.equips[gear.slot] && self.player.equips[gear.slot] === gear;
 				const cantCheck = gear.locked || gear.pinned || isEquipped;
 
 				if (self.batchMode) {
-					if (cantCheck) div.style.opacity = '0.5';
+					div.style.flexDirection = 'row';
+					div.style.gap = '8px';
+					if (cantCheck) div.classList.add('disabled');
 					div.onclick = null;
 					const cb = document.createElement('input');
 					cb.type = 'checkbox';
-					cb.style.marginRight = '6px';
 					cb.disabled = cantCheck;
 					if (!cantCheck) {
 						cb.className = 'batch-cb';
@@ -452,31 +448,29 @@ export class UIController {
 						cb.checked = self.batchChecked.has(i);
 						cb.onchange = function() { window.ui._toggleBatchCb(i, this.checked); };
 					}
-					cb.disabled = cantCheck;
 					div.appendChild(cb);
 				} else {
 					div.onclick = function() { window.ui.openGearDetail(i, false); };
 				}
 
-				const inner = document.createElement('div');
-				inner.style.cssText = 'flex:1;cursor:pointer';
 				const nameDiv = document.createElement('div');
-				nameDiv.className = GEAR_RARITY[gear.rarityIdx].color;
-				nameDiv.style.fontWeight = 'bold';
+				nameDiv.className = 'name ' + GEAR_RARITY[gear.rarityIdx].color;
 				let label = gear.name;
 				if (gear.enhanceLv > 0) label += '+' + gear.enhanceLv;
 				if (gear.pinned) label += '📌'; else if (gear.locked) label += '🔒';
 				if (isEquipped) label += '⚔️';
 				nameDiv.textContent = label;
-				inner.appendChild(nameDiv);
+				div.appendChild(nameDiv);
 
 				const scoreDiv = document.createElement('div');
-				scoreDiv.style.cssText = 'font-size:11px;margin-top:5px;color:var(--text-mut)';
+				scoreDiv.className = 'score';
 				scoreDiv.textContent = `总评分: ${formatNumber(gear.score)} | ${SLOT_NAMES[gear.slot]}`;
-				inner.appendChild(scoreDiv);
-				div.appendChild(inner);
+				div.appendChild(scoreDiv);
 				return div;
-			}, { columns, itemHeight: 58, rowGap: 10, bufferRows: 3 });
+			}, { columns: 4, itemHeight: 66, rowGap: 12, bufferRows: 3 });
+			area.style.flex = '0 0 280px';
+			area.style.minHeight = '280px';
+			area.style.maxHeight = '280px';
 		}
 
 		// 「显示全部装备」按钮
@@ -504,17 +498,17 @@ export class UIController {
 			let count = this.batchChecked.size;
 			let rarityOpts = GEAR_RARITY.map((r, idx) => `<option value="${idx}">${r.name}</option>`).join('');
 			bar.innerHTML = `
-			<select id="batch-rarity-sel" style="font-size:12px; padding:2px 4px; margin-right:6px;">${rarityOpts}</select>
-			<button onclick="window.ui.batchSelectByRarity()" style="margin-right:10px; border-color:var(--border); color:var(--text-main);">全选此品质</button>
-			<button onclick="window.ui.batchSelectAll()" style="margin-right:10px; border-color:var(--border); color:var(--text-main);">全选</button>
-			<button onclick="window.ui.batchDoSalvage()" style="margin-right:10px; border-color:#f59e0b; color:#f59e0b;">分解所选(${count})</button>
-			<button onclick="window.ui.openEnhanceView()" style="margin-right:10px; border-color:var(--accent); color:var(--accent);">⚒️ 强化锻造</button>
-			<button onclick="window.ui.exitBatchMode()">取消</button>`;
+			<select id="batch-rarity-sel" style="font-size:12px; padding:2px 4px; margin-right:6px; background:var(--bg-dark);color:var(--text-main);border:1px solid var(--border);">${rarityOpts}</select>
+			<button class="btn" onclick="window.ui.batchSelectByRarity()">全选此品质</button>
+			<button class="btn" onclick="window.ui.batchSelectAll()">全选</button>
+			<button class="btn btn-gold" onclick="window.ui.batchDoSalvage()">分解所选(${count})</button>
+			<button class="btn btn-red" onclick="window.ui.openEnhanceView()">⚒️ 强化锻造</button>
+			<button class="btn" onclick="window.ui.exitBatchMode()">取消</button>`;
 		} else {
 			bar.innerHTML = `
-			<button onclick="window.ui.enterBatchMode()" style="margin-right:10px; border-color:#f59e0b; color:#f59e0b;">批量分解</button>
-			<button onclick="window.ui.openEnhanceView()" style="margin-right:10px; border-color:var(--accent); color:var(--accent);">⚒️ 强化锻造</button>
-			<button onclick="document.getElementById('modal-overlay').style.display='none'">关闭终端</button>`;
+			<button class="btn btn-gold" onclick="window.ui.enterBatchMode()">批量分解</button>
+			<button class="btn btn-red" onclick="window.ui.openEnhanceView()">⚒️ 强化锻造</button>
+			<button class="btn" onclick="document.getElementById('modal-overlay').style.display='none'" style="margin-left:auto">关闭终端</button>`;
 		}
 	}
 
@@ -601,100 +595,106 @@ export class UIController {
 
         this.modalContext = { targetGear: gear, isBody: isEquipped, index: idxOrSlot };
 
-        document.getElementById('item-details').style.display = 'block';
+	document.getElementById('item-details').style.display = 'flex';
         document.getElementById('det-name').innerHTML = `
             <span class="${GEAR_RARITY[gear.rarityIdx].color}">
                 ${gear.name} ${gear.enhanceLv > 0 ? '+' + gear.enhanceLv : ''} ${gear.pinned ? '📌' : (gear.locked ? '🔒' : '')}
             </span>`;
 
 	let accCheck = isAccessory(gear.slot);
-
-		// 🔒 评分显示重构：总分(含宝珠) 与 装备基础分 独立展示
 		let orbScore = (gear.score || 0) - (gear.baseScore || 0);
-		let statsHtml = `<b>总评分: <span style="color:var(--primary)">${formatNumber(gear.score || 0)}</span>${orbScore > 0 ? ` <span style="color:#a855f7">(+${formatNumber(orbScore)})</span>` : ''}</b><br>`;
-		statsHtml += `装备评分: ${formatNumber(gear.baseScore || 0)}<br>`;
-
-		// 🔒 获取宝珠加成汇总，用于在属性区显示增量
 		let orbBonus = this.player.getGearOrbBonus(gear);
 
-		// 直观且标准的属性解构陈列 (恢复紧凑排版，不换行)
+		let statsHtml = '<div class="stats-box">';
+		statsHtml += `<div><span class="label">总评分:</span> <span style="color:var(--primary);font-weight:bold">${formatNumber(gear.score || 0)}</span>${orbScore > 0 ? ` <span style="color:#a855f7">(+${formatNumber(orbScore)})</span>` : ''}</div>`;
+		statsHtml += `<div><span class="label">装备评分:</span> ${formatNumber(gear.baseScore || 0)}</div>`;
+
 		if (isWeapon(gear.slot)) {
-			statsHtml += `攻击力: ${formatNumber(Math.floor(gear.stats.atk || 0))}`;
-			if (orbBonus.atk_pct) statsHtml += ` <span style="color:#a855f7">(+${orbBonus.atk_pct}%)</span>`;
-			statsHtml += `<br>`;
+			statsHtml += `<div><span class="label">攻击力:</span> ${formatNumber(Math.floor(gear.stats.atk || 0))}${orbBonus.atk_pct ? ` <span style="color:#a855f7">(+${orbBonus.atk_pct}%)</span>` : ''}</div>`;
 		} else if (accCheck) {
-            statsHtml += `攻击力: ${formatNumber(Math.floor(gear.stats.atk || 0))}`;
-            if (orbBonus.atk_pct) statsHtml += ` <span style="color:#a855f7">(+${orbBonus.atk_pct}%)</span>`;
-            statsHtml += ` | 防御力: ${formatNumber(Math.floor(gear.stats.int || 0))}<br>`;
-        } else {
-            statsHtml += `防御力: ${formatNumber(Math.floor(gear.stats.int || 0))}<br>`;
-            if (orbBonus.atk_pct) statsHtml += `攻击力: <span style="color:#a855f7">+${orbBonus.atk_pct}%</span><br>`;
-        }
+			statsHtml += `<div><span class="label">攻击力:</span> ${formatNumber(Math.floor(gear.stats.atk || 0))}${orbBonus.atk_pct ? ` <span style="color:#a855f7">(+${orbBonus.atk_pct}%)</span>` : ''}</div>`;
+			statsHtml += `<div><span class="label">防御力:</span> ${formatNumber(Math.floor(gear.stats.int || 0))}</div>`;
+		} else {
+			statsHtml += `<div><span class="label">防御力:</span> ${formatNumber(Math.floor(gear.stats.int || 0))}</div>`;
+			if (orbBonus.atk_pct) statsHtml += `<div><span class="label">攻击力:</span> <span style="color:#a855f7">+${orbBonus.atk_pct}%</span></div>`;
+		}
 
-        // 副属性 (紧凑排版)
-        if (gear.stats.crit) statsHtml += `暴击率: +${(gear.stats.crit).toFixed(1)}%${orbBonus.crit ? ` <span style="color:#a855f7">(+${orbBonus.crit}%)</span>` : ''}　`;
-        if (gear.stats.haste) statsHtml += `冷却缩减: +${(gear.stats.haste).toFixed(1)}%${orbBonus.haste ? ` <span style="color:#a855f7">(+${orbBonus.haste}%)</span>` : ''}　`;
-        if (gear.stats.versa) statsHtml += `共鸣: +${(gear.stats.versa).toFixed(1)}%${orbBonus.versa ? ` <span style="color:#a855f7">(+${orbBonus.versa}%)</span>` : ''}　`;
-        
-        // 🔒 宝珠提供的额外属性独立显示
-        if (orbBonus.hp_pct) statsHtml += `　最大生命: <span style="color:#a855f7">+${orbBonus.hp_pct}%</span>`;
-        if (orbBonus.finale_cd) statsHtml += `　终焉冷却: <span style="color:#a855f7">+${orbBonus.finale_cd}%</span>`;
+		if (gear.stats.crit) statsHtml += `<div><span class="label">暴击率:</span> +${(gear.stats.crit).toFixed(1)}%${orbBonus.crit ? ` <span style="color:#a855f7">(+${orbBonus.crit}%)</span>` : ''}</div>`;
+		if (gear.stats.haste) statsHtml += `<div><span class="label">冷却缩减:</span> +${(gear.stats.haste).toFixed(1)}%${orbBonus.haste ? ` <span style="color:#a855f7">(+${orbBonus.haste}%)</span>` : ''}</div>`;
+		if (gear.stats.versa) statsHtml += `<div><span class="label">共鸣:</span> +${(gear.stats.versa).toFixed(1)}%${orbBonus.versa ? ` <span style="color:#a855f7">(+${orbBonus.versa}%)</span>` : ''}</div>`;
+		if (orbBonus.hp_pct) statsHtml += `<div><span class="label">最大生命:</span> <span style="color:#a855f7">+${orbBonus.hp_pct}%</span></div>`;
+		if (orbBonus.finale_cd) statsHtml += `<div><span class="label">终焉冷却:</span> <span style="color:#a855f7">+${orbBonus.finale_cd}%</span></div>`;
+		statsHtml += '</div>';
 
-        // 🔮 宝珠镶嵌 UI 区块
-        statsHtml += `<div style="margin-top:10px; border-top:1px dashed #444; padding-top:8px;">`;
-        statsHtml += `<b style="color:#a855f7">🔮 宝珠孔位 (同类全身最多生效${MAX_SAME_ORB}个)：</b><br>`;
+		statsHtml += '<div class="gem-system">';
+		statsHtml += `<div class="gem-title">🔮 宝珠孔位 (同类全身最多生效${MAX_SAME_ORB}个)</div>`;
         
 	if (!gear.orbs) gear.orbs = [];
 	let orbLen = gear.orbs.length;
 	if (orbLen === 0) {
-		statsHtml += `<span style="color:#555; font-size:11px;">该装备无宝珠孔位</span>`;
+		statsHtml += `<div class="gem-slot-row"><div class="slot-header"><span style="color:#555;font-size:11px;">该装备无宝珠孔位</span></div></div>`;
 	} else {
 		for (let i = 0; i < orbLen; i++) {
             let oid = gear.orbs[i];
-            statsHtml += `<div style="margin-top:4px; display:flex; align-items:center;">孔位${i+1}: `;
+            statsHtml += `<div class="gem-slot-row" id="gem-slot-${i}">`;
+            statsHtml += `<div class="slot-header" onclick="window.ui.toggleGemSlot(${i})">`;
+            statsHtml += `<div class="info">`;
+            statsHtml += `<span style="color:#94a3b8;">孔位${i+1}:</span>`;
             if (oid) {
                 let orb = ORBS.find(o => o.id === oid);
-                statsHtml += `<span style="color:#c084fc; margin:0 5px;">[${orb.name}] (${orb.desc})</span>`;
-                statsHtml += `<button onclick="window.ui.removeOrb(${i})" style="font-size:11px; padding:1px 4px; background:transparent; border:1px solid #ef4444; color:#ef4444; cursor:pointer;">卸下</button>`;
+                statsHtml += `<span style="color:#c084fc;">[${orb.name}] (${orb.desc})</span>`;
             } else {
-                statsHtml += `<span style="color:#666; margin-right:5px;">[空]</span>`;
+                statsHtml += `<span style="color:#666;">[空]</span>`;
+            }
+            statsHtml += '</div>';
+    statsHtml += `<span style="font-size:10px;color:#94a3b8;">更换 ▾</span>`;
+            statsHtml += '</div>';
+            statsHtml += '<div class="gem-warehouse">';
+            if (oid) {
+                ORBS.forEach(o => {
+                    let count = this.player.orbs[o.id] || 0;
+                    let sameOrb = o.id === oid;
+                    if (count > 0 && !sameOrb) {
+                        statsHtml += `<span class="gem-chip" onclick="window.ui.embedOrb('${o.id}', ${i})">${o.name}(${count})</span>`;
+                    }
+                });
+    statsHtml += `<span class="gem-chip remove" onclick="window.ui.removeOrb(${i})">卸下</span>`;
+            } else {
                 let hasOrb = false;
                 ORBS.forEach(o => {
                     let count = this.player.orbs[o.id] || 0;
                     if (count > 0) {
                         hasOrb = true;
-                        statsHtml += `<button onclick="window.ui.embedOrb('${o.id}', ${i})" style="margin-right:3px; font-size:10px; padding:1px 4px; background:#1e1e2e; border:1px solid #a855f7; color:#d8b4fe; cursor:pointer">${o.name}(${count})</button>`;
+                        statsHtml += `<span class="gem-chip" onclick="window.ui.embedOrb('${o.id}', ${i})">${o.name}(${count})</span>`;
                     }
                 });
-
                 if (!hasOrb) {
-                    statsHtml += `<span style="color:#555; font-size:10px;">无可用宝珠</span>`;
+                    statsHtml += `<span style="color:#555;font-size:10px;padding:4px 0;">无可用宝珠</span>`;
                 }
             }
-	statsHtml += `</div>`;
+            statsHtml += '</div>';
+	statsHtml += '</div>';
 		}
 		}
-		statsHtml += `</div>`;
+		statsHtml += '</div>';
 
 		document.getElementById('det-stats').innerHTML = statsHtml;
 
 	let actionsDiv = document.getElementById('det-actions');
-
-        // 🔒 恢复双锁按钮：普通锁(防误卖) 和 防换锁(防替换)
-        let lockBtn = `<button onclick="window.ui.toggleLock()" style="border-color:#facc15;color:#facc15">${gear.locked ? '🔓 解锁' : '🔒 锁定'}</button>`;
-        let pinBtn = `<button onclick="window.ui.togglePin()" style="border-color:#ff0055;color:#ff0055">${gear.pinned ? '📍 解除防换' : '📌 锁定防换'}</button>`;
+        let lockBtn = `<button class="btn btn-gold" onclick="window.ui.toggleLock()" style="font-size:13px;">${gear.locked ? '🔓 解锁' : '🔒 锁定'}</button>`;
+        let pinBtn = `<button class="btn btn-red" onclick="window.ui.togglePin()" style="font-size:13px;">${gear.pinned ? '📍 解除防换' : '📌 锁定防换'}</button>`;
 
         if (isEquipped) {
             actionsDiv.innerHTML = `
                 ${lockBtn} ${pinBtn}
-                <button onclick="window.ui.unequipGear()">👇 卸下放回背包</button>`;
+                <button class="btn" onclick="window.ui.unequipGear()" style="font-size:11px;">👇 卸下放回背包</button>`;
         } else {
             actionsDiv.innerHTML = `
                 ${lockBtn} ${pinBtn}
-                <button onclick="window.ui.equipFromPack()" style="background:var(--primary);border-color:var(--primary)">
+                <button class="btn btn-red" onclick="window.ui.equipFromPack()" style="font-size:13px;">
                     ✨ 穿戴 / 替换现装
                 </button>
-                <button onclick="window.ui.sellFromPack()" style="border-color:#facc15;color:#facc15">
+                <button class="btn btn-gold" onclick="window.ui.sellFromPack()" style="font-size:13px;">
                     💰 分解获得金币${gear.rarityIdx === 8 ? '与精华' : ''}
                 </button>`;
         }
@@ -771,6 +771,14 @@ export class UIController {
         this.player.save();
         this.openGearDetail(this.modalContext.index, this.modalContext.isBody);
         EBus.emit('log', `✨ 卸下了 [${orb.name}]，已退回背包`, 'sys');
+    }
+
+    toggleGemSlot(slotIndex) {
+        const row = document.getElementById(`gem-slot-${slotIndex}`);
+        if (!row) return;
+        const isOpen = row.classList.contains('open');
+        document.querySelectorAll('.gem-slot-row.open').forEach(r => r.classList.remove('open'));
+        if (!isOpen) row.classList.add('open');
     }
 
     equipFromPack() {

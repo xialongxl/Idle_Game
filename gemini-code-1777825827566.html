@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>装备终端 - 完整交互版</title>
+    <style>
+        :root {
+            --bg-dark: #0f0f16;
+            --bg-panel: #1a1a26;
+            --bg-item: #252535;
+            --accent-pink: #d946ef;
+            --accent-red: #ff4d6d;
+            --accent-purple: #c084fc;
+            --text-main: #e2e2e9;
+            --text-dim: #94a3b8;
+            --gold: #eab308;
+            --border: #334155;
+            --radius: 8px;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        /* 主容器 */
+        .main-terminal {
+            width: 800px;
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            max-height: 95vh;
+        }
+
+        /* 顶部标题 */
+        .terminal-header {
+            padding: 20px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+        .terminal-header h2 { margin: 0; color: var(--accent-pink); font-size: 18px; }
+
+        /* 1. 装备列表区 - 解决拥挤，增加滚动 */
+        .scroll-area {
+            padding: 20px;
+            height: 280px;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            background-color: rgba(0,0,0,0.2);
+        }
+
+        /* 滚动条美化 */
+        .scroll-area::-webkit-scrollbar { width: 6px; }
+        .scroll-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+        .eq-card {
+            background: var(--bg-item);
+            border: 1px solid var(--border);
+            padding: 12px;
+            border-radius: var(--radius);
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .eq-card:hover { border-color: var(--accent-red); transform: translateY(-2px); }
+        .eq-card.active { border-color: var(--accent-pink); background: rgba(217, 70, 239, 0.05); }
+        .eq-card .name { color: var(--accent-red); font-weight: bold; font-size: 14px; margin-bottom: 4px; }
+        .eq-card .score { color: var(--text-dim); font-size: 11px; }
+
+        /* 2. 详情面板区 */
+        .detail-panel {
+            padding: 24px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .stats-box {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            background: rgba(255,255,255,0.02);
+            padding: 16px;
+            border-radius: var(--radius);
+        }
+        .stats-box div { font-size: 13px; line-height: 1.6; }
+        .stats-box .label { color: var(--text-dim); }
+
+        /* 3. 宝珠孔位交互优化 */
+        .gem-system { display: flex; flex-direction: column; gap: 8px; }
+        .gem-slot-row {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .slot-header {
+            padding: 10px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .slot-header:hover { background: rgba(255,255,255,0.05); }
+        .slot-header .info { font-size: 13px; display: flex; gap: 10px; }
+        
+        /* 快捷选择仓库 - 抽屉式 */
+        .gem-warehouse {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background: #12121a;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 0 16px;
+        }
+        .gem-slot-row.open .gem-warehouse {
+            max-height: 100px;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .gem-chip {
+            background: var(--bg-item);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .gem-chip:hover { border-color: var(--accent-purple); color: var(--accent-purple); }
+
+        /* 4. 底部操作栏 */
+        .terminal-footer {
+            padding: 20px 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg-item);
+            color: var(--text-main);
+            cursor: pointer;
+            font-size: 13px;
+            transition: 0.2s;
+        }
+        .btn-red { border-color: var(--accent-red); color: var(--accent-red); }
+        .btn-gold { border-color: var(--gold); color: var(--gold); }
+        .btn:hover { filter: brightness(1.2); background: #2d2d3f; }
+
+    </style>
+</head>
+<body>
+
+<div class="main-terminal">
+    <div class="terminal-header">
+        <h2>装备选取 - 上衣</h2>
+        <div style="font-size: 12px; color: var(--text-dim)">当前设备: NVIDIA RTX 4070</div>
+    </div>
+
+    <!-- 1. 装备网格 -->
+    <div class="scroll-area" id="eqGrid">
+        <!-- 自动生成 24 个格子演示效果 -->
+    </div>
+
+    <div class="detail-panel">
+        <div style="font-size: 18px; font-weight: bold; color: var(--accent-red)">终焉 圣衫 +10 🔒</div>
+        
+        <!-- 数值面板 -->
+        <div class="stats-box">
+            <div><span class="label">总评分:</span> <span style="color:var(--accent-pink)">975.0K</span></div>
+            <div><span class="label">装备评分:</span> 974.4K</div>
+            <div><span class="label">防御力:</span> 97.4K</div>
+            <div><span class="label">冷却缩减:</span> +24.0%</div>
+            <div><span class="label">共鸣:</span> +24.0%</div>
+            <div><span class="label">攻击力:</span> 4.8K</div>
+        </div>
+
+        <!-- 2. 宝珠原地替换系统 -->
+        <div class="gem-system">
+            <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 4px;">宝珠孔位 (点击孔位展开快捷替换)</div>
+            
+            <!-- 孔位 1 -->
+            <div class="gem-slot-row" id="slot-1">
+                <div class="slot-header" onclick="toggleSlot(1)">
+                    <div class="info">
+                        <span style="color:var(--text-dim)">孔位1:</span>
+                        <span class="gem-name" style="color:var(--accent-purple)">[暴击宝珠] (370)</span>
+                    </div>
+                    <span style="font-size: 10px; color: var(--text-dim)">更换 ▾</span>
+                </div>
+                <div class="gem-warehouse">
+                    <div class="gem-chip" onclick="changeGem(1, '生命宝珠', 352)">生命(352)</div>
+                    <div class="gem-chip" onclick="changeGem(1, '攻击宝珠', 336)">攻击(336)</div>
+                    <div class="gem-chip" onclick="changeGem(1, '共鸣宝珠', 342)">共鸣(342)</div>
+                    <div class="gem-chip" onclick="changeGem(1, '终焉回响', 325)">回响(325)</div>
+                    <div class="gem-chip" style="color:var(--accent-red)" onclick="changeGem(1, '空', 0)">卸下</div>
+                </div>
+            </div>
+
+            <!-- 孔位 2 -->
+            <div class="gem-slot-row" id="slot-2">
+                <div class="slot-header" onclick="toggleSlot(2)">
+                    <div class="info">
+                        <span style="color:var(--text-dim)">孔位2:</span>
+                        <span class="gem-name" style="color:var(--accent-purple)">[攻击宝珠] (336)</span>
+                    </div>
+                    <span style="font-size: 10px; color: var(--text-dim)">更换 ▾</span>
+                </div>
+                <div class="gem-warehouse">
+                    <div class="gem-chip" onclick="changeGem(2, '生命宝珠', 352)">生命(352)</div>
+                    <div class="gem-chip" onclick="changeGem(2, '暴击宝珠', 370)">暴击(370)</div>
+                    <div class="gem-chip" style="color:var(--accent-red)" onclick="changeGem(2, '空', 0)">卸下</div>
+                </div>
+            </div>
+
+            <!-- 孔位 3 -->
+            <div class="gem-slot-row" id="slot-3">
+                <div class="slot-header" onclick="toggleSlot(3)">
+                    <div class="info">
+                        <span style="color:var(--text-dim)">孔位3:</span>
+                        <span class="gem-name" style="color:var(--text-dim)">[空]</span>
+                    </div>
+                    <span style="font-size: 10px; color: var(--text-dim)">展开 ▾</span>
+                </div>
+                <div class="gem-warehouse">
+                    <div class="gem-chip" onclick="changeGem(3, '生命宝珠', 352)">生命(352)</div>
+                    <div class="gem-chip" onclick="changeGem(3, '攻击宝珠', 336)">攻击(336)</div>
+                    <div class="gem-chip" onclick="changeGem(3, '共鸣宝珠', 342)">共鸣(342)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 详情内的小按钮 -->
+        <div style="display:flex; gap: 10px;">
+            <button class="btn btn-gold">🔓 解锁</button>
+            <button class="btn btn-red">📌 锁定防换</button>
+            <button class="btn" style="font-size: 11px;">👇 卸下放回背包</button>
+        </div>
+    </div>
+
+    <!-- 3. 全局底部按钮 -->
+    <div class="terminal-footer">
+        <button class="btn btn-gold">批量分解</button>
+        <button class="btn btn-red">强化锻造</button>
+        <button class="btn" style="margin-left: auto;">关闭终端</button>
+    </div>
+</div>
+
+<script>
+    // 生成网格
+    const grid = document.getElementById('eqGrid');
+    const names = ["轻甲", "法袍", "皮衣", "符文衣", "长袍", "圣衫", "布衣"];
+    for(let i=0; i<24; i++) {
+        const name = names[Math.floor(Math.random()*names.length)];
+        const activeClass = i === 2 ? 'active' : '';
+        grid.innerHTML += `
+            <div class="eq-card ${activeClass}">
+                <div class="name">终焉 ${name} 🔒</div>
+                <div class="score">${(200 + Math.random()*40).toFixed(1)}K | 上衣</div>
+            </div>
+        `;
+    }
+
+    // 交互逻辑
+    function toggleSlot(id) {
+        const el = document.getElementById(`slot-${id}`);
+        const isOpen = el.classList.contains('open');
+        // 关闭其他
+        document.querySelectorAll('.gem-slot-row').forEach(row => row.classList.remove('open'));
+        // 切换当前
+        if (!isOpen) el.classList.add('open');
+    }
+
+    function changeGem(slotId, name, val) {
+        const slot = document.getElementById(`slot-${slotId}`);
+        const nameEl = slot.querySelector('.gem-name');
+        if(name === '空') {
+            nameEl.innerText = '[空]';
+            nameEl.style.color = 'var(--text-dim)';
+        } else {
+            nameEl.innerText = `[${name}] (${val})`;
+            nameEl.style.color = 'var(--accent-purple)';
+        }
+        slot.classList.remove('open');
+    }
+</script>
+
+</body>
+</html>

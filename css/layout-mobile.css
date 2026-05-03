@@ -43,8 +43,12 @@
     .seq-item { padding: 6px; }
 
 .modal { width: 95%; max-height: 90vh; }
-.inv-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; padding: 10px; }
-#modal-content-area { overflow-y: visible; }
+.scroll-area { grid-template-columns: repeat(2, 1fr); height: 200px; gap: 8px; padding: 10px; }
+.stats-box { grid-template-columns: repeat(2, 1fr); }
+.terminal-header { padding: 15px 18px; }
+.terminal-header span[id="modal-title"] { font-size: 16px; }
+.terminal-footer { padding: 15px 18px; flex-wrap: wrap; }
+#modal-content-area { overflow-y: auto; }
 
     .refine-modal {
         flex-direction: column;
